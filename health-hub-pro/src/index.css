@@ -1,0 +1,362 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Primary Medical Blue Palette */
+    --primary: 210 65% 42%;
+    --primary-foreground: 0 0% 100%;
+    --primary-light: 204 70% 53%;
+    --primary-dark: 210 54% 35%;
+    
+    /* Secondary Teal */
+    --secondary: 195 70% 66%;
+    --secondary-foreground: 210 54% 20%;
+    --secondary-light: 197 85% 80%;
+    
+    /* Background & Surfaces */
+    --background: 0 0% 100%;
+    --background-secondary: 214 60% 98%;
+    --foreground: 210 50% 16%;
+    
+    /* Cards & Surfaces */
+    --card: 0 0% 100%;
+    --card-foreground: 210 50% 16%;
+    --card-elevated: 0 0% 100%;
+    
+    /* Popover */
+    --popover: 0 0% 100%;
+    --popover-foreground: 210 50% 16%;
+    
+    /* Muted */
+    --muted: 214 32% 96%;
+    --muted-foreground: 215 20% 50%;
+    
+    /* Accent */
+    --accent: 195 70% 66%;
+    --accent-foreground: 210 54% 20%;
+    
+    /* Semantic Colors */
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --success-light: 140 60% 90%;
+    
+    --warning: 45 93% 70%;
+    --warning-foreground: 30 50% 20%;
+    --warning-light: 45 100% 90%;
+    
+    --destructive: 10 80% 70%;
+    --destructive-foreground: 0 0% 100%;
+    --destructive-light: 10 80% 95%;
+    
+    --info: 210 100% 50%;
+    --info-foreground: 0 0% 100%;
+    
+    /* Borders & Inputs */
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 210 65% 42%;
+    
+    /* Text Colors */
+    --text-primary: 210 50% 16%;
+    --text-secondary: 215 20% 50%;
+    --text-tertiary: 215 15% 65%;
+    --text-disabled: 215 15% 76%;
+    
+    /* Radius */
+    --radius: 0.75rem;
+    
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(210 54% 35%) 0%, hsl(210 65% 42%) 50%, hsl(204 70% 53%) 100%);
+    --gradient-primary-hover: linear-gradient(135deg, hsl(210 54% 30%) 0%, hsl(210 65% 38%) 50%, hsl(204 70% 48%) 100%);
+    --gradient-secondary: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(214 60% 98%) 100%);
+    --gradient-medical: linear-gradient(135deg, hsl(197 85% 95%) 0%, hsl(195 70% 90%) 100%);
+    
+    /* Shadows */
+    --shadow-sm: 0 2px 8px rgba(42, 92, 138, 0.06);
+    --shadow-md: 0 4px 20px rgba(42, 92, 138, 0.08);
+    --shadow-lg: 0 8px 32px rgba(42, 92, 138, 0.12);
+    --shadow-primary: 0 8px 24px rgba(74, 144, 226, 0.25);
+    --shadow-elevated: 0 12px 40px rgba(42, 92, 138, 0.15);
+    
+    /* Sidebar (kept for compatibility) */
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --primary: 210 80% 60%;
+    --primary-foreground: 210 50% 10%;
+    --primary-light: 204 70% 70%;
+    --primary-dark: 210 65% 50%;
+    
+    --secondary: 195 50% 50%;
+    --secondary-foreground: 0 0% 100%;
+    --secondary-light: 197 40% 40%;
+    
+    --background: 220 20% 8%;
+    --background-secondary: 220 18% 10%;
+    --foreground: 0 0% 88%;
+    
+    --card: 220 18% 12%;
+    --card-foreground: 0 0% 88%;
+    --card-elevated: 220 18% 14%;
+    
+    --popover: 220 18% 12%;
+    --popover-foreground: 0 0% 88%;
+    
+    --muted: 220 15% 18%;
+    --muted-foreground: 215 15% 60%;
+    
+    --accent: 195 50% 50%;
+    --accent-foreground: 0 0% 100%;
+    
+    --success: 142 60% 50%;
+    --success-foreground: 0 0% 100%;
+    --success-light: 142 30% 20%;
+    
+    --warning: 45 80% 55%;
+    --warning-foreground: 30 50% 10%;
+    --warning-light: 45 40% 20%;
+    
+    --destructive: 10 70% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --destructive-light: 10 40% 20%;
+    
+    --info: 210 90% 60%;
+    --info-foreground: 0 0% 100%;
+    
+    --border: 220 15% 20%;
+    --input: 220 15% 20%;
+    --ring: 210 80% 60%;
+    
+    --text-primary: 0 0% 88%;
+    --text-secondary: 215 15% 60%;
+    --text-tertiary: 215 12% 45%;
+    --text-disabled: 215 10% 35%;
+    
+    --gradient-primary: linear-gradient(135deg, hsl(210 65% 45%) 0%, hsl(210 80% 55%) 50%, hsl(204 70% 65%) 100%);
+    --gradient-primary-hover: linear-gradient(135deg, hsl(210 65% 40%) 0%, hsl(210 80% 50%) 50%, hsl(204 70% 60%) 100%);
+    --gradient-secondary: linear-gradient(180deg, hsl(220 18% 12%) 0%, hsl(220 20% 8%) 100%);
+    --gradient-medical: linear-gradient(135deg, hsl(195 30% 15%) 0%, hsl(195 25% 20%) 100%);
+    
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
+    --shadow-primary: 0 8px 24px rgba(74, 144, 226, 0.3);
+    --shadow-elevated: 0 12px 40px rgba(0, 0, 0, 0.6);
+    
+    --sidebar-background: 220 18% 10%;
+    --sidebar-foreground: 0 0% 88%;
+    --sidebar-primary: 210 80% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 15% 18%;
+    --sidebar-accent-foreground: 0 0% 88%;
+    --sidebar-border: 220 15% 20%;
+    --sidebar-ring: 210 80% 60%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+  }
+  
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+@layer components {
+  /* Mobile Frame */
+  .mobile-frame {
+    @apply w-[375px] h-[812px] bg-background relative overflow-hidden;
+    box-shadow: var(--shadow-elevated);
+    border-radius: 40px;
+  }
+  
+  /* Gradient Backgrounds */
+  .bg-gradient-primary {
+    background: var(--gradient-primary);
+  }
+  
+  .bg-gradient-primary-hover:hover {
+    background: var(--gradient-primary-hover);
+  }
+  
+  .bg-gradient-secondary {
+    background: var(--gradient-secondary);
+  }
+  
+  .bg-gradient-medical {
+    background: var(--gradient-medical);
+  }
+  
+  /* Medical Wave Pattern */
+  .bg-medical-pattern {
+    background-image: 
+      url("data:image/svg+xml,%3Csvg width='100' height='20' viewBox='0 0 100 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 10 Q 12.5 0, 25 10 T 50 10 T 75 10 T 100 10' stroke='%23A3D8F4' stroke-width='1' fill='none' opacity='0.1'/%3E%3C/svg%3E");
+    background-repeat: repeat-x;
+    background-position: center;
+  }
+  
+  /* Card Styles */
+  .card-elevated {
+    @apply bg-card rounded-2xl;
+    box-shadow: var(--shadow-md);
+  }
+  
+  .card-medical {
+    @apply rounded-2xl border-2;
+    background: hsl(var(--secondary-light) / 0.3);
+    border-color: hsl(var(--secondary));
+  }
+  
+  /* Button Animations */
+  .btn-press {
+    @apply transition-all duration-150 active:scale-95 active:opacity-80;
+  }
+  
+  /* Tab Bar */
+  .tab-bar {
+    @apply h-[70px] bg-card/80 backdrop-blur-xl border-t border-border;
+    box-shadow: 0 -4px 20px rgba(42, 92, 138, 0.05);
+  }
+  
+  /* Scan Button */
+  .scan-button {
+    @apply w-14 h-14 rounded-full flex items-center justify-center;
+    background: var(--gradient-primary);
+    box-shadow: var(--shadow-primary);
+  }
+  
+  /* Status Indicators */
+  .status-dot {
+    @apply w-3 h-3 rounded-full;
+  }
+  
+  .status-good {
+    @apply bg-success;
+  }
+  
+  .status-warning {
+    @apply bg-warning;
+  }
+  
+  .status-critical {
+    @apply bg-destructive;
+  }
+  
+  /* Input Focus Ring */
+  .input-focus {
+    @apply focus:ring-2 focus:ring-primary focus:border-primary transition-all duration-200;
+  }
+  
+  /* Animations */
+  .animate-fade-up {
+    animation: fadeUp 0.4s ease-out forwards;
+  }
+  
+  .animate-pulse-gentle {
+    animation: pulseGentle 2s ease-in-out infinite;
+  }
+  
+  .animate-scan-line {
+    animation: scanLine 2s ease-in-out infinite;
+  }
+  
+  .animate-slide-up {
+    animation: slideUp 0.3s ease-out forwards;
+  }
+  
+  .animate-scale-in {
+    animation: scaleIn 0.2s ease-out forwards;
+  }
+  
+  /* Scrollbar Styling */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-border rounded-full;
+  }
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulseGentle {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.05);
+  }
+}
+
+@keyframes scanLine {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Animation Delays */
+.delay-100 { animation-delay: 100ms; }
+.delay-200 { animation-delay: 200ms; }
+.delay-300 { animation-delay: 300ms; }
+.delay-400 { animation-delay: 400ms; }
+.delay-500 { animation-delay: 500ms; }
