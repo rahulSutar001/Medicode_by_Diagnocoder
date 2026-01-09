@@ -4,6 +4,7 @@ Orchestrates OCR, AI, and data storage
 """
 import uuid
 from datetime import datetime
+import asyncio
 from typing import List, Optional, Dict, Any
 
 from fastapi import BackgroundTasks, Request
@@ -12,7 +13,9 @@ from app.core.security import get_authed_supabase_client
 from app.services.premium_service import PremiumService
 from app.services.safety_service import SafetyService
 from app.utils.ocr import OCRService
+from app.utils.ocr import OCRService
 from app.ai.explanations import ExplanationService
+from app.ai.synthesis import SynthesisService
 from app.schemas.report import ReportResponse, TestParameterResponse
 from app.core.config import settings
 from app.core.security import get_authed_supabase_client, get_service_supabase_client
@@ -31,7 +34,22 @@ class ReportService:
         self.premium_service = PremiumService()
         self.safety_service = SafetyService()
         self.ocr_service = OCRService()
+        self.ocr_service = OCRService()
         self.explanation_service = ExplanationService()
+        self.synthesis_service = SynthesisService()
+
+    async def verify_family_access(self, requester_id: str, target_id: str) -> bool:
+        """Verify if requester has family connection with target"""
+        if requester_id == target_id:
+            return True
+            
+        # Check for confirmed connection in either direction
+        response = self.storage_client.table("family_connections").select("id").or_(
+            f"and(user_id.eq.{requester_id},connected_user_id.eq.{target_id},status.eq.connected),"
+            f"and(user_id.eq.{target_id},connected_user_id.eq.{requester_id},status.eq.connected)"
+        ).execute()
+        
+        return len(response.data) > 0
 
     async def create_report(
         self,
@@ -115,6 +133,13 @@ class ReportService:
             parameters = []
             is_premium = await self.premium_service.check_subscription(user_id)
 
+            parameters = []
+            is_premium = await self.premium_service.check_subscription(user_id)
+            
+            # 1. First pass: Create and insert all parameter records
+            param_records = []
+            param_data_list = [] # For AI prompt
+            
             for param_data in parsed_data.get("parameters", []):
                 try:
                     value_float = float(param_data.get("value", "0").replace(",", ""))
@@ -139,37 +164,61 @@ class ReportService:
                     "flag": flag,
                     "created_at": datetime.utcnow().isoformat(),
                 }
-
-                self.storage_client.table("report_parameters").insert(param_record).execute()
-
-                try:
-                    explanation = await self.explanation_service.generate_explanation(
-                        parameter_name=param_data.get("name", ""),
-                        value=param_data.get("value", ""),
-                        normal_range=param_data.get("range", ""),
-                        flag=flag,
-                        is_premium=is_premium,
-                    )
-
-                    explanation_record = {
-                        "id": str(uuid.uuid4()),
-                        "parameter_id": param_id,
-                        "what": explanation.get("what", ""),
-                        "meaning": explanation.get("meaning", ""),
-                        "causes": explanation.get("causes", []),
-                        "next_steps": explanation.get("next_steps", []),
-                        "generated_at": datetime.utcnow().isoformat(),
-                    }
-
-                    self.storage_client.table("report_explanations").insert(
-                        explanation_record
-                    ).execute()
-
-                except Exception as e:
-                    print(f"[WARN] Explanation generation failed: {e}")
-
+                
+                # Add to lists
+                param_records.append(param_record)
                 parameters.append({**param_record, "flag": flag})
+                
+                # Prepare data for AI (must match what AI expects)
+                param_data_list.append({
+                    "name": param_data.get("name", ""),
+                    "value": param_data.get("value", ""),
+                    "range": param_data.get("range", ""),
+                    "flag": flag,
+                    "unit": param_data.get("unit")
+                })
 
+            # Batch Insert Parameters
+            if param_records:
+                self.storage_client.table("report_parameters").insert(param_records).execute()
+
+            # 2. Call AI: Single Batch Request
+            print(f"[DEBUG] Generating batched explanations for {len(param_data_list)} parameters...")
+            explanations = await self.explanation_service.generate_report_explanations(
+                parameters=param_data_list,
+                is_premium=is_premium
+            )
+            
+            # 3. Process results and batch insert explanations
+            # Map parameters by name to associate IDs
+            param_map = {p["name"].lower().strip(): p["id"] for p in param_records}
+            
+            explanation_records = []
+            for exp in explanations:
+                # Find matching parameter ID
+                p_name = exp.get("name", "").lower().strip()
+                if not p_name or p_name not in param_map:
+                    # Try fuzzy match or fallback? 
+                    # For now skip if no match to avoid bad data
+                    continue
+                    
+                param_id = param_map[p_name]
+                
+                explanation_record = {
+                    "id": str(uuid.uuid4()),
+                    "parameter_id": param_id,
+                    "what": exp.get("what", ""),
+                    "meaning": exp.get("meaning", ""),
+                    "causes": exp.get("causes", []),
+                    "next_steps": exp.get("next_steps", []),
+                    "generated_at": datetime.utcnow().isoformat(),
+                }
+                explanation_records.append(explanation_record)
+
+            if explanation_records:
+                print(f"[DEBUG] Inserting {len(explanation_records)} explanations")
+                self.storage_client.table("report_explanations").insert(explanation_records).execute()
+            
             flag_level = (
                 self.safety_service.get_flag_level(parameters)
                 if parameters
@@ -185,6 +234,9 @@ class ReportService:
             ).eq("id", report_id).execute()
 
             print(f"[SUCCESS] Report {report_id} processed")
+            
+            # Trigger Background Synthesis (Fire and forget from user perspective, but awaited here in bg task)
+            await self.generate_and_cache_synthesis(report_id, user_id)
 
         except Exception as e:
             print(f"[ERROR] Processing failed for {report_id}: {e}")
@@ -197,15 +249,33 @@ class ReportService:
             raise
 
     async def get_report(self, report_id: str, user_id: str) -> Optional[Dict]:
+        """Get report details. Checks for ownership OR family connection."""
+        
+        # 1. Try standard access (Own report)
         response = (
             self.db.table("reports")
             .select("*")
             .eq("id", report_id)
             .eq("user_id", user_id)
-            .single()
             .execute()
         )
-        return response.data
+        if response.data:
+            return response.data[0]
+            
+        # 2. Try Shared Access (Family report)
+        # Fetch report metadata using Service Role to check owner
+        admin_res = self.storage_client.table("reports").select("*").eq("id", report_id).execute()
+        if not admin_res.data:
+            return None # Report doesnt exist at all
+            
+        report = admin_res.data[0]
+        owner_id = report["user_id"]
+        
+        # Verify connection
+        if await self.verify_family_access(user_id, owner_id):
+            return report
+            
+        return None
 
     async def list_reports(
         self,
@@ -247,15 +317,9 @@ class ReportService:
         }
 
     async def delete_report(self, report_id: str, user_id: str) -> bool:
-        report = await self.get_report(report_id, user_id)
-        if not report:
-            return False
-
-        self.db.table("report_parameters").delete().eq(
-            "report_id", report_id
-        ).execute()
+        # Direct delete. RLS policy ("Users can delete their own reports") ensures security.
         self.db.table("reports").delete().eq("id", report_id).execute()
-
+        # Always return True (idempotent: if it's gone, mission accomplished)
         return True
 
     async def get_report_parameters(self, report_id: str, user_id: str) -> List[Dict]:
@@ -316,3 +380,173 @@ class ReportService:
             .execute()
         )
         return response.data or []
+
+    async def find_related_reports(self, report: Dict, user_id: str) -> List[Dict]:
+        """Find reports related to the given report (by Type)"""
+        if not report or not report.get("type"):
+            return []
+            
+        # Find past reports of same type
+        response = (
+            self.db.table("reports")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("type", report["type"])
+            .neq("id", report["id"]) # Exclude current
+            .order("created_at", desc=True)
+            .limit(5)
+            .execute()
+        )
+        
+        related_reports = response.data or []
+        
+        # Enrich with parameters (Synthesis needs data)
+        for r in related_reports:
+             r["parameters"] = await self.get_report_parameters(r["id"], user_id)
+             
+        return related_reports
+
+    async def get_cached_synthesis(self, report_id: str, user_id: str) -> Optional[Dict[str, Any]]:
+        """Get cached synthesis from DB. NO OpenAI calls."""
+        # 1. Verify Access
+        report = await self.get_report(report_id, user_id)
+        if not report:
+            raise ValueError("Report not found")
+
+        # 2. Get from DB
+        response = (
+            self.storage_client.table("report_summaries")
+            .select("summary_text, status, error_message")
+            .eq("report_id", report_id)
+            .execute()
+        )
+        
+        if response.data:
+            row = response.data[0]
+            # Structure the response
+            return {
+                "status": row.get("status", "completed"), # Default to completed for legacy
+                "data": row.get("summary_text"),
+                "error": row.get("error_message")
+            }
+            
+        return None
+
+    async def generate_and_cache_synthesis(self, report_id: str, user_id: str, force_regenerate: bool = False) -> bool:
+        """
+        Atomic synthesis generation using DB constraints.
+        Guarantees: Hard Idempotency, Single Execution, No Race Conditions.
+        """
+        try:
+            # 1. Force Regenerate: Atomic Delete checks
+            if force_regenerate:
+                print(f"[DEBUG] Forcing synthesis regeneration for {report_id}")
+                # Delete existing row to clear the lock
+                self.storage_client.table("report_summaries").delete().eq("report_id", report_id).execute()
+
+            # 2. Acquire Lock (Atomic Insert)
+            # Try to insert 'pending'. If row exists (pending/completed/failed), DB throws unique constraint error.
+            # This serves as our atomic lock.
+            current_time = datetime.utcnow().isoformat()
+            try:
+                self.storage_client.table("report_summaries").insert({
+                    "report_id": report_id,
+                    "status": "pending",
+                    "summary_text": None,
+                    "error_message": None,
+                    "created_at": current_time, 
+                    "updated_at": current_time
+                }).execute()
+            except Exception as e:
+                # Lock failed -> Row already exists.
+                # This is expected behavior for idempotency (job already running or done).
+                print(f"[DEBUG] Synthesis lock held or done for {report_id}. Exiting. Reason: {e}")
+                return True
+
+            # --- WE HAVE THE LOCK ---
+            
+            try:
+                # 3. Get Data
+                report = await self.get_report(report_id, user_id)
+                if not report:
+                    self._mark_synthesis_failed(report_id, "Report not found")
+                    return False
+                    
+                report["parameters"] = await self.get_report_parameters(report_id, user_id)
+                
+                # 4. Find History
+                target_user_id = report["user_id"]
+                related = await self.find_related_reports(report, target_user_id)
+                
+                # 5. Generate AI Synthesis
+                print(f"[DEBUG] Generating AI synthesis for {report_id}...")
+                synthesis = await self.synthesis_service.generate_synthesis(report, related)
+                
+                # 6. Validate AI Response
+                if synthesis.get("doctor_precis") == "AI Synthesis unavailable.":
+                    self._mark_synthesis_failed(report_id, "AI service unavailable")
+                    return False
+
+                # 7. Mark as COMPLETED
+                self.storage_client.table("report_summaries").update({
+                    "status": "completed",
+                    "summary_text": synthesis,
+                    "error_message": None,
+                    "updated_at": datetime.utcnow().isoformat()
+                }).eq("report_id", report_id).execute()
+                
+                print(f"[SUCCESS] Synthesis completed for {report_id}")
+                return True
+                
+            except Exception as inner_e:
+                # Catch internal logic errors and mark failed so user can retry later
+                print(f"[ERROR] Logic failed during synthesis: {inner_e}")
+                self._mark_synthesis_failed(report_id, str(inner_e))
+                return False
+
+        except Exception as e:
+            print(f"[CRITICAL] Outer synthesis error: {e}")
+            return False
+
+    def _mark_synthesis_failed(self, report_id: str, error_message: str):
+        """Helper to mark synthesis as failed"""
+        try:
+            self.storage_client.table("report_summaries").update({
+                "status": "failed",
+                "error_message": error_message,
+                "updated_at": datetime.utcnow().isoformat()
+            }).eq("report_id", report_id).execute()
+        except Exception as e:
+            print(f"[CRITICAL] Failed to mark synthesis failure: {e}")
+
+    async def get_report_synthesis(self, report_id: str, user_id: str) -> Dict[str, Any]:
+        """
+        DEPRECATED: Use get_cached_synthesis
+        Maintains backward compatibility by returning structured response
+        """
+        cached = await self.get_cached_synthesis(report_id, user_id)
+        
+        if cached:
+            if cached["status"] == "completed" and cached["data"]:
+                return {**cached["data"], "status": "completed"}
+            elif cached["status"] == "pending":
+                return {
+                    "status": "pending",
+                    "status_summary": "Analysis in progress...",
+                    "key_trends": [],
+                    "doctor_precis": "Generating your smart health synthesis..."
+                }
+            elif cached["status"] == "failed":
+                return {
+                    "status": "failed",
+                    "status_summary": "Analysis failed.",
+                    "key_trends": [],
+                    "doctor_precis": "Could not generate synthesis. Please retry."
+                }
+            
+        return {
+            "status": "missing",
+            "status_summary": "Analysis not ready.",
+            "key_trends": [],
+            "doctor_precis": "Smart synthesis not generated yet."
+        }

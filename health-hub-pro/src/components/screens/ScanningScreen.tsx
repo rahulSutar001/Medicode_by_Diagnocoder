@@ -23,7 +23,7 @@ export function ScanningScreen() {
     let isMounted = true;
 
     if (!currentReportId) {
-      // No report ID, go back to scan screen
+      console.log('No currentReportId, redirecting to scan');
       setCurrentScreen('scan');
       return;
     }
@@ -32,31 +32,39 @@ export function ScanningScreen() {
       try {
         if (!isMounted) return;
 
+        console.log(`Polling status for report: ${currentReportId}`);
         const reportStatus = await getReportStatus(currentReportId);
+        console.log('Received report status:', reportStatus);
 
         if (!isMounted) return;
 
-        setStatus(reportStatus.status);
+        const status = reportStatus.status.toLowerCase();
+        setStatus(status);
 
-        // Update progress (estimate based on status)
-        if (reportStatus.status === 'processing') {
+        if (status === 'processing') {
           setProgress(prev => Math.min(prev + 5, 90)); // Gradually increase to 90%
           // Schedule next poll
           timeoutId = setTimeout(pollStatus, 2000);
-        } else if (reportStatus.status === 'completed') {
+        } else if (status === 'completed') {
+          console.log('Report completed, navigating to result...');
           setProgress(100);
           setTimeout(() => {
             if (isMounted) {
               setCurrentScreen('report-result');
             }
           }, 500);
-        } else if (reportStatus.status === 'failed') {
+        } else if (status === 'failed') {
+          console.error('Report processing failed:', reportStatus.error_message);
           toast.error('Report processing failed. Please try again.');
           setTimeout(() => {
             if (isMounted) {
               setCurrentScreen('scan-error');
             }
           }, 500);
+        } else {
+          // Unknown status, assume processing but log warning
+          console.warn('Unknown status received:', status);
+          timeoutId = setTimeout(pollStatus, 2000);
         }
       } catch (error: any) {
         console.error('Status check failed:', error);

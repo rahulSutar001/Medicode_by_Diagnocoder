@@ -13,6 +13,7 @@ import { ReportResultScreen } from './screens/ReportResultScreen';
 import { FamilyScreen } from './screens/FamilyScreen';
 import { AddFamilyScreen } from './screens/AddFamilyScreen';
 import { ProfileScreen } from './screens/ProfileScreen';
+import { ReportExplanationScreen } from './screens/ReportExplanationScreen';
 import { AuthModal } from './modals/AuthModal';
 import { NicknameModal } from './modals/NicknameModal';
 import { PremiumModal } from './modals/PremiumModal';
@@ -48,6 +49,8 @@ export function MediGuideApp() {
         return <ProfileScreen />;
       case 'nickname-popup':
         return <FamilyScreen />;
+      case 'report-explanation':
+        return <ReportExplanationScreen />;
       default:
         return <SplashScreen />;
     }

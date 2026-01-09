@@ -135,13 +135,26 @@ async def list_reports(
     report_type: Optional[str] = None,
     flag_level: Optional[str] = None,
     time_range: str = "all",
+    target_user_id: Optional[str] = None,
     page: int = 1,
     limit: int = 20,
     user_id: str = Depends(get_user_id),
 ):
     service = ReportService(request)
+    
+    # Handle shared access
+    fetch_user_id = user_id
+    if target_user_id and target_user_id != user_id:
+        has_access = await service.verify_family_access(user_id, target_user_id)
+        if not has_access:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have access to this user's reports"
+            )
+        fetch_user_id = target_user_id
+        
     result = await service.list_reports(
-        user_id=user_id,
+        user_id=fetch_user_id,
         search=search,
         report_type=report_type,
         flag_level=flag_level,
@@ -186,3 +199,58 @@ async def get_report_explanations(
     service = ReportService(request)
     explanations = await service.get_report_explanations(report_id, user_id)
     return explanations
+
+
+@router.get("/{report_id}/synthesis")
+async def get_report_synthesis(
+    request: Request,
+    report_id: str,
+    user_id: str = Depends(get_user_id),
+):
+    """
+    Get AI synthesis for a report. 
+    Reads from CACHE only. No real-time AI generation.
+    """
+    service = ReportService(request)
+    try:
+        synthesis = await service.get_report_synthesis(report_id, user_id)
+        return synthesis
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        print(f"[ERROR] Get synthesis failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve synthesis")
+
+
+@router.post("/{report_id}/generate-synthesis")
+async def generate_report_synthesis_trigger(
+    report_id: str,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    user_id: str = Depends(get_user_id),
+):
+    """
+    Trigger background generation of AI synthesis.
+    Safe and idempotent.
+    """
+    try:
+        service = ReportService(request)
+        # Verify access first
+        report = await service.get_report(report_id, user_id)
+        if not report:
+             raise HTTPException(status_code=404, detail="Report not found")
+
+        # Run in background
+        background_tasks.add_task(
+            service.generate_and_cache_synthesis,
+            report_id,
+            user_id,
+            force_regenerate=True # Force new attempt
+        )
+        
+        return {"status": "accepted", "message": "Synthesis generation started"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] Trigger synthesis failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to trigger synthesis")

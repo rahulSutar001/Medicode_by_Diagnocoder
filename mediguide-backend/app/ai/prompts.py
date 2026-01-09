@@ -108,3 +108,28 @@ def check_for_diagnosis_request(message: str) -> bool:
     ]
     
     return any(keyword in message_lower for keyword in diagnosis_keywords + treatment_keywords)
+
+
+BATCH_EXPLANATION_PROMPT_TEMPLATE = """You are a medical report explanation assistant.
+
+Given the following lab test results, return a JSON array.
+
+Each item must contain:
+- name (must match input name exactly)
+- what (educational description)
+- meaning (what the result means)
+- causes (array of common causes)
+- next_steps (array of general recommendations)
+- flag (normal / high / low)
+
+Lab results:
+{parameters_json}
+
+Return ONLY valid JSON. No markdown. No explanation text.
+"""
+
+def get_batch_explanation_prompt(parameters: List[dict]) -> str:
+    import json
+    # Minify JSON to save tokens
+    params_json = json.dumps(parameters, separators=(',', ':'))
+    return BATCH_EXPLANATION_PROMPT_TEMPLATE.format(parameters_json=params_json)

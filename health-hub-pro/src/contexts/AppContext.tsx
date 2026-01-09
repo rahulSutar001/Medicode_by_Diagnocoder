@@ -1,8 +1,9 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { getSession, onAuthStateChange, getCurrentUser } from '@/lib/auth';
 import type { Session } from '@supabase/supabase-js';
+import { FamilyMember } from '@/lib/api';
 
-export type Screen = 
+export type Screen =
   | 'splash'
   | 'onboarding'
   | 'login'
@@ -17,7 +18,8 @@ export type Screen =
   | 'family'
   | 'add-family'
   | 'nickname-popup'
-  | 'profile';
+  | 'profile'
+  | 'report-explanation';
 
 export type Tab = 'home' | 'history' | 'scan' | 'family' | 'profile';
 
@@ -47,13 +49,7 @@ interface Report {
   uploadedToABDM: boolean;
 }
 
-interface FamilyMember {
-  id: string;
-  name: string;
-  initials: string;
-  status: 'good' | 'needs-review' | 'critical' | 'pending';
-  connectionStatus: 'connected' | 'pending-sent' | 'pending-received';
-}
+
 
 interface AppContextType {
   currentScreen: Screen;
@@ -84,6 +80,8 @@ interface AppContextType {
   setSelectedFamilyMember: (member: { id: string; name: string } | null) => void;
   currentReportId: string | null;
   setCurrentReportId: (id: string | null) => void;
+  viewingMember: FamilyMember | null;
+  setViewingMember: (member: FamilyMember | null) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -96,13 +94,7 @@ const mockReports: Report[] = [
   { id: '5', date: 'Nov 15, 2024', type: 'Thyroid Panel', labName: 'MedPath Labs', flagLevel: 'yellow', uploadedToABDM: false },
 ];
 
-const mockFamilyMembers: FamilyMember[] = [
-  { id: '1', name: 'Kabir', initials: 'K', status: 'good', connectionStatus: 'connected' },
-  { id: '2', name: 'Aarohi', initials: 'A', status: 'needs-review', connectionStatus: 'connected' },
-  { id: '3', name: 'Vihaan', initials: 'V', status: 'pending', connectionStatus: 'pending-received' },
-  { id: '4', name: 'Saanvi', initials: 'S', status: 'good', connectionStatus: 'connected' },
-  { id: '5', name: 'Ishaan', initials: 'I', status: 'good', connectionStatus: 'connected' },
-];
+const mockFamilyMembers: FamilyMember[] = [];
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [currentScreen, setCurrentScreen] = useState<Screen>('splash');
@@ -120,6 +112,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [selectedFamilyMember, setSelectedFamilyMember] = useState<{ id: string; name: string } | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [currentReportId, setCurrentReportId] = useState<string | null>(null);
+  const [viewingMember, setViewingMember] = useState<FamilyMember | null>(null);
 
   /**
    * Initialize authentication state on app load
@@ -209,6 +202,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setSelectedFamilyMember,
         currentReportId,
         setCurrentReportId,
+        viewingMember,
+        setViewingMember,
       }}
     >
       {children}

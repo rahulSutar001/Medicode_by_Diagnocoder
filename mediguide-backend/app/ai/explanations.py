@@ -6,7 +6,7 @@ import json
 from typing import Dict, List, Optional
 from openai import OpenAI
 from app.core.config import settings
-from app.ai.prompts import get_explanation_prompt
+from app.ai.prompts import get_explanation_prompt, get_batch_explanation_prompt
 
 
 class ExplanationService:
@@ -19,6 +19,85 @@ class ExplanationService:
         self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
         self.model = settings.OPENAI_MODEL
     
+    async def generate_report_explanations(
+        self,
+        parameters: List[Dict],
+        is_premium: bool = False
+    ) -> List[Dict]:
+        """
+        Generate AI explanations for ALL parameters in one batch call.
+        Strictly one OpenAI request per report.
+        """
+        if not parameters:
+            return []
+
+        prompt = get_batch_explanation_prompt(parameters)
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a medical explanations assistant. Return ONLY a JSON array."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                temperature=0.3,
+                # Increase tokens for potential large response
+                max_tokens=2000 if is_premium else 1000,
+                response_format={"type": "json_object"}
+            )
+
+            content = response.choices[0].message.content
+            
+            # Parse JSON response
+            try:
+                # OpenAI often wraps array in an object key if force-json is used, or just returns the object
+                # We need to handle this robustly
+                data = json.loads(content)
+                
+                explanations = []
+                if isinstance(data, list):
+                    explanations = data
+                elif isinstance(data, dict):
+                    # Try to find the list in values
+                    # Common keys: "results", "explanations", "parameters"
+                    for key, val in data.items():
+                        if isinstance(val, list):
+                            explanations = val
+                            break
+                        
+                # Validate and Sanitize each item
+                valid_explanations = []
+                for exp in explanations:
+                    # Basic validation
+                    if not isinstance(exp, dict): continue
+                    
+                    # Match by name if possible? 
+                    # For now just sanitize what we got
+                    flag = exp.get("flag", "normal")
+                    sanitized = self._validate_explanation(exp, flag)
+                    
+                    # Ensure name exists for mapping back
+                    if "name" in exp:
+                        sanitized["name"] = exp["name"]
+                        
+                    valid_explanations.append(sanitized)
+                    
+                return valid_explanations
+
+            except json.JSONDecodeError:
+                print(f"[ERROR] Batch AI response not valid JSON: {content[:100]}")
+                return [] # Graceful degradation
+
+        except Exception as e:
+            print(f"[ERROR] Batch AI explanation failed: {e}")
+            return [] # Graceful degradation: Report completes without explanations
+
     async def generate_explanation(
         self,
         parameter_name: str,
@@ -27,62 +106,9 @@ class ExplanationService:
         flag: str,
         is_premium: bool = False
     ) -> Dict[str, any]:
-        """
-        Generate AI explanation for a test parameter
-        
-        Args:
-            parameter_name: Name of the parameter
-            value: Test value
-            normal_range: Normal range string
-            flag: 'normal', 'high', or 'low'
-            is_premium: If True, generate detailed explanation
-        
-        Returns:
-            Dictionary with explanation fields:
-            {
-                "what": "...",
-                "meaning": "...",
-                "causes": ["...", "..."],
-                "next_steps": ["...", "..."]
-            }
-        """
-        prompt = get_explanation_prompt(parameter_name, value, normal_range, flag)
-        
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a medical information assistant. Provide educational explanations only. NEVER provide diagnosis or treatment recommendations."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                temperature=0.3,  # Lower temperature for more consistent, factual responses
-                max_tokens=500 if is_premium else 300,  # Premium gets more detailed
-                response_format={"type": "json_object"}  # Force JSON response
-            )
-            
-            content = response.choices[0].message.content
-            
-            # Parse JSON response
-            try:
-                explanation = json.loads(content)
-            except json.JSONDecodeError:
-                # Fallback if JSON parsing fails
-                explanation = self._parse_fallback_explanation(content)
-            
-            # Validate and sanitize explanation
-            explanation = self._validate_explanation(explanation, flag)
-            
-            return explanation
-        
-        except Exception as e:
-            # Fallback explanation if AI fails
-            return self._get_fallback_explanation(parameter_name, flag)
+        """DEPRECATED: Use generate_report_explanations instead"""
+        # Kept for backward compatibility if needed, but should not be used in new flow
+        return self._get_fallback_explanation(parameter_name, flag)
     
     def _validate_explanation(self, explanation: Dict, flag: str) -> Dict:
         """Validate and sanitize explanation to ensure safety"""

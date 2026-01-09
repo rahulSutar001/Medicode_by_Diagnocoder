@@ -23,7 +23,7 @@ async def list_family_members(
     return [FamilyMemberResponse(**member) for member in members]
 
 
-@router.post("/invite", dependencies=[Depends(require_premium)])
+@router.post("/invite")
 async def invite_family_member(
     request: InviteFamilyRequest,
     user_id: str = Depends(get_user_id)
@@ -34,6 +34,7 @@ async def invite_family_member(
         connection_id = await service.send_invite(
             user_id=user_id,
             email=request.email,
+            phone_number=request.phone_number,
             nickname=request.nickname
         )
         return {"connection_id": connection_id, "message": "Invite sent successfully"}
