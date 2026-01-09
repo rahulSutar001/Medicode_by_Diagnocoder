@@ -35,4 +35,4 @@ pydantic==2.5.3
 # Development
 pytest==7.4.4
 pytest-asyncio==0.23.3
-httpx==0.26.0
+httpx==0.24.1
