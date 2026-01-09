@@ -254,18 +254,14 @@ export async function getPremiumStatus(): Promise<{
 }
 // Family
 export interface FamilyMember {
-  id: string;
+  connection_id: string;
   user_id: string;
-  connected_user_id: string;
-  nickname?: string;
+  display_name?: string;
+  profile_name?: string;
+  phone?: string;
   status: 'good' | 'needs-review' | 'critical' | 'pending';
   connection_status: 'connected' | 'pending-sent' | 'pending-received';
   created_at: string;
-  profiles?: {
-    id: string;
-    first_name: string;
-    last_name: string;
-  };
 }
 
 export async function getFamilyMembers(): Promise<FamilyMember[]> {
@@ -279,9 +275,29 @@ export async function inviteFamilyMember(data: { email?: string; phone_number?: 
   });
 }
 
-export async function acceptFamilyConnection(connectionId: string, nickname?: string): Promise<{ message: string }> {
+export async function acceptFamilyConnection(connectionId: string, display_name?: string): Promise<{ message: string }> {
   return apiRequest(`/family/accept/${connectionId}`, {
     method: 'POST',
-    body: JSON.stringify({ nickname }),
+    body: JSON.stringify({ display_name }),
+  });
+}
+
+export async function renameFamilyConnection(connectionId: string, display_name: string): Promise<{ message: string }> {
+  return apiRequest(`/family/connections/${connectionId}/rename`, {
+    method: 'PATCH',
+    body: JSON.stringify({ display_name }),
+  });
+}
+
+/**
+ * Ask MediBot a question (NEW V1)
+ */
+export async function askMediBot(
+  reportId: string,
+  question: string
+): Promise<{ response: string }> {
+  return apiRequest('/chatbot/ask', {
+    method: 'POST',
+    body: JSON.stringify({ report_id: reportId, question }),
   });
 }

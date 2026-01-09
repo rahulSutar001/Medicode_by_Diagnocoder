@@ -7,7 +7,8 @@ from app.services.family_service import FamilyService
 from app.schemas.family import (
     FamilyMemberResponse,
     InviteFamilyRequest,
-    AcceptConnectionRequest
+    AcceptConnectionRequest,
+    RenameConnectionRequest
 )
 
 router = APIRouter(prefix="/family", tags=["family"])
@@ -45,6 +46,29 @@ async def invite_family_member(
         )
 
 
+@router.patch("/connections/{connection_id}/rename")
+async def rename_connection(
+    connection_id: str,
+    request: RenameConnectionRequest,
+    user_id: str = Depends(get_user_id)
+):
+    """Rename a family connection (set alias)"""
+    service = FamilyService()
+    success = await service.rename_connection(
+        connection_id=connection_id,
+        user_id=user_id,
+        new_display_name=request.display_name
+    )
+    
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Connection not found"
+        )
+        
+    return {"message": "Connection renamed successfully"}
+
+
 @router.post("/accept/{connection_id}")
 async def accept_connection(
     connection_id: str,
@@ -56,7 +80,7 @@ async def accept_connection(
     accepted = await service.accept_connection(
         connection_id=connection_id,
         user_id=user_id,
-        nickname=request.nickname
+        display_name=request.display_name
     )
     
     if not accepted:

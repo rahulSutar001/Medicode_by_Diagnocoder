@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '@/contexts/AppContext';
 import { ArrowLeft, MessageCircle, Share2, ChevronDown, ChevronUp, Check, AlertTriangle, AlertCircle, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+import { cn, getStorageUrl } from '@/lib/utils';
 import { getReport, getReportParameters } from '@/lib/api';
 import { toast } from 'sonner';
 import { ReportSynthesis } from '../ReportSynthesis';
+import { Chatbot } from '@/components/Chatbot';
 
 interface TestResult {
   name: string;
@@ -170,10 +171,45 @@ export function ReportResultScreen() {
 
       {/* Scrollable Content */}
       <div className="flex-1 overflow-y-auto px-5 py-4 pb-32 custom-scrollbar">
+        {/* Report Image Section - Always Visible */}
+        {report.image_url && (
+          <div className="mb-8 animate-fade-in relative z-10">
+            <div className="flex items-center justify-between mb-3 px-1">
+              <h3 className="text-body-lg font-semibold text-foreground flex items-center gap-2">
+                <FileText className="w-5 h-5 text-primary" />
+                Original Report
+              </h3>
+              <span className="text-caption text-text-tertiary bg-muted px-2 py-1 rounded-md">
+                Scanned Image
+              </span>
+            </div>
+
+            <div className="rounded-2xl overflow-hidden border border-border/60 bg-card shadow-sm relative min-h-[250px] flex items-center justify-center group transition-all hover:shadow-md">
+              {/* Pattern Background for premium feel */}
+              <div className="absolute inset-0 bg-grid-pattern opacity-[0.03] pointer-events-none" />
+
+              {/* Fallback Icon */}
+              <FileText className="w-16 h-16 text-text-tertiary/20 absolute z-0" />
+
+              {/* Image */}
+              <img
+                src={getStorageUrl(report.image_url)}
+                alt="Original Report"
+                className="w-full h-auto max-h-[500px] object-contain mx-auto relative z-10 transition-transform duration-300 group-hover:scale-[1.01]"
+                onError={(e) => e.currentTarget.style.display = 'none'}
+              />
+
+              {/* Overlay Gradient (bottom) */}
+              <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-black/5 to-transparent pointer-events-none opacity-50" />
+            </div>
+          </div>
+        )}
+
         {viewMode === 'analysis' ? (
           <ReportSynthesis reportId={currentReportId!} />
         ) : (
           <>
+
             {/* Summary Card */}
             <div className={cn(
               "card-elevated p-5 mb-6 border-l-4",
@@ -274,9 +310,7 @@ export function ReportResultScreen() {
 
       {/* Fixed Bottom Bar */}
       <div className="absolute bottom-0 left-0 right-0 px-5 py-4 bg-card border-t border-border flex items-center gap-3">
-        <button className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-          <MessageCircle className="w-6 h-6 text-primary" />
-        </button>
+
         <Button size="default" className="flex-1">
           Save to ABDM
         </Button>
@@ -285,6 +319,8 @@ export function ReportResultScreen() {
           Share
         </Button>
       </div>
+
+      {currentReportId && <Chatbot reportId={currentReportId} />}
     </div>
   );
 }

@@ -3,7 +3,7 @@ Application configuration and environment variables
 """
 from pydantic import model_validator
 from pydantic_settings import BaseSettings
-from typing import Optional
+from typing import Optional, Any
 
 
 class Settings(BaseSettings):
@@ -37,14 +37,32 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     
     # CORS Settings
-    CORS_ORIGINS: list[str] = [
-        "http://localhost:8080",
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://127.0.0.1:8080",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173",
-    ]
+    BACKEND_CORS_ORIGINS: list[str] = []
+
+    @model_validator(mode='before')
+    @classmethod
+    def assemble_cors_origins(cls, v: dict[str, Any]) -> dict[str, Any]:
+        if isinstance(v.get("BACKEND_CORS_ORIGINS"), str) and not v.get("BACKEND_CORS_ORIGINS", "").startswith("["):
+            v["BACKEND_CORS_ORIGINS"] = [i.strip() for i in v["BACKEND_CORS_ORIGINS"].split(",")]
+        elif isinstance(v.get("BACKEND_CORS_ORIGINS"), (list, str)):
+             # Let Pydantic handle lists or JSON strings
+             pass
+        return v
+    
+    @property
+    def CORS_ORIGINS(self) -> list[str]:
+        """Combine defaults with env vars"""
+        defaults = [
+            "http://localhost:8080",
+            "http://localhost:3000",
+            "http://localhost:5173",
+            "http://127.0.0.1:8080",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:5173",
+        ]
+        return defaults + self.BACKEND_CORS_ORIGINS
+
+    # File Upload Settings
     
     # File Upload Settings
     MAX_UPLOAD_SIZE: int = 10 * 1024 * 1024  # 10MB

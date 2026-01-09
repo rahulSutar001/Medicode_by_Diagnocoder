@@ -8,13 +8,13 @@ from datetime import datetime
 
 class FamilyMemberResponse(BaseModel):
     """Response model for family member"""
-    id: str
+    connection_id: str
     user_id: str
-    connected_user_id: str
-    nickname: Optional[str] = None
+    display_name: Optional[str] = None
+    profile_name: Optional[str] = None
+    phone: Optional[str] = None
     status: str
     connection_status: str
-    profiles: Optional[Dict[str, Any]] = None
     created_at: datetime
     
     class Config:
@@ -30,4 +30,9 @@ class InviteFamilyRequest(BaseModel):
 
 class AcceptConnectionRequest(BaseModel):
     """Request model for accepting connection"""
-    nickname: Optional[str] = None
+    display_name: Optional[str] = None
+
+
+class RenameConnectionRequest(BaseModel):
+    """Request model for renaming a connection"""
+    display_name: str

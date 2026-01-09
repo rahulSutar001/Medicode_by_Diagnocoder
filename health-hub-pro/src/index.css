@@ -299,6 +299,15 @@
   .custom-scrollbar::-webkit-scrollbar-thumb {
     @apply bg-border rounded-full;
   }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 @keyframes fadeUp {

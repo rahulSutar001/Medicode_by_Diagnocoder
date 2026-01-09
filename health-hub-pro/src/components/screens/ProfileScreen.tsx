@@ -3,13 +3,13 @@ import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { TabBar } from '@/components/TabBar';
 import { supabase } from '@/lib/supabase';
-import { 
-  User, 
-  FileText, 
-  Moon, 
+import {
+  User,
+  FileText,
+  Moon,
   Sun,
-  Shield, 
-  HelpCircle, 
+  Shield,
+  HelpCircle,
   Info,
   ChevronRight,
   Pencil,
@@ -28,6 +28,56 @@ export function ProfileScreen() {
   const { theme, toggleTheme } = useTheme();
   const [profile, setProfile] = useState<SupabaseProfile | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Size check (e.g. 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Image size too large. Max 5MB.");
+      return;
+    }
+
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) return;
+
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${authUser.id}/${Date.now()}.${fileExt}`;
+      const filePath = `${fileName}`;
+
+      // 1. Upload to Supabase Storage
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      // 2. Get Public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+
+      // 3. Update Profile Table
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ profile_image_url: publicUrl })
+        .eq('id', authUser.id);
+
+      if (updateError) throw updateError;
+
+      // 4. Update Local State
+      setProfile(prev => prev ? ({ ...prev, profile_image_url: publicUrl }) : null);
+      toast.success("Profile picture updated!");
+
+    } catch (error: any) {
+      console.error('Upload failed:', error);
+      toast.error('Failed to upload image');
+    }
+  };
 
   // Sync Supabase profile to AppContext on mount
   useEffect(() => {
@@ -121,17 +171,17 @@ export function ProfileScreen() {
 
   const menuItems = [
     { icon: User, label: 'Edit Profile', onClick: () => setCurrentScreen('profile-setup') },
-    { icon: FileText, label: 'Health Reports', badge: '18', onClick: () => {} },
+    { icon: FileText, label: 'Health Reports', badge: '18', onClick: () => { } },
     { icon: theme === 'dark' ? Sun : Moon, label: 'App Theme', isTheme: true, onClick: toggleTheme },
-    { icon: Shield, label: 'Privacy & Security', hasArrow: true, onClick: () => {} },
-    { icon: HelpCircle, label: 'Help & Support', hasArrow: true, onClick: () => {} },
-    { icon: Info, label: 'About', hasArrow: true, onClick: () => {} },
+    { icon: Shield, label: 'Privacy & Security', hasArrow: true, onClick: () => { } },
+    { icon: HelpCircle, label: 'Help & Support', hasArrow: true, onClick: () => { } },
+    { icon: Info, label: 'About', hasArrow: true, onClick: () => { } },
     { icon: LogOut, label: 'Log Out', onClick: handleLogout, isDestructive: true },
   ];
 
   // Use Indian name as specified
-  const displayName = user?.firstName && user?.lastName 
-    ? `${user.firstName} ${user.lastName}` 
+  const displayName = user?.firstName && user?.lastName
+    ? `${user.firstName} ${user.lastName}`
     : 'Kabir Sharma';
 
   return (
@@ -140,14 +190,32 @@ export function ProfileScreen() {
       <div className="pt-12 px-5 pb-6 flex flex-col items-center">
         {/* Profile Photo */}
         <div className="relative">
-          <div className="w-20 h-20 rounded-full bg-gradient-primary flex items-center justify-center shadow-primary">
-            <span className="text-3xl font-bold text-primary-foreground">
-              {user?.firstName?.[0] || 'K'}
-            </span>
+          <div className="w-20 h-20 rounded-full bg-gradient-primary flex items-center justify-center shadow-primary overflow-hidden">
+            {profile?.profile_image_url ? (
+              <img
+                src={profile.profile_image_url as string}
+                alt="Profile"
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <span className="text-3xl font-bold text-primary-foreground">
+                {user?.firstName?.[0] || 'K'}
+              </span>
+            )}
           </div>
-          <button className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-card shadow-md flex items-center justify-center border border-border">
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-card shadow-md flex items-center justify-center border border-border cursor-pointer hover:bg-muted transition-colors"
+          >
             <Pencil className="w-3.5 h-3.5 text-primary" />
           </button>
+          <input
+            type="file"
+            ref={fileInputRef}
+            className="hidden"
+            accept="image/*"
+            onChange={handleImageUpload}
+          />
         </div>
 
         {/* Name */}
@@ -212,20 +280,20 @@ export function ProfileScreen() {
                 "flex-1 text-body-lg",
                 item.isDestructive ? "text-destructive" : "text-foreground"
               )}>{item.label}</span>
-              
+
               {item.badge && (
                 <span className="px-2 py-0.5 rounded-full bg-primary text-caption text-primary-foreground font-medium">
                   {item.badge}
                 </span>
               )}
-              
+
               {item.isTheme && (
                 <div className="flex items-center gap-2">
                   <span className="text-body-sm text-text-secondary capitalize">{theme}</span>
                   <Switch checked={theme === 'dark'} onCheckedChange={toggleTheme} />
                 </div>
               )}
-              
+
               {item.hasArrow && (
                 <ChevronRight className="w-5 h-5 text-text-tertiary" />
               )}

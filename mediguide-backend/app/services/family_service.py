@@ -20,7 +20,6 @@ class FamilyService:
     
     async def list_family_members(self, user_id: str) -> List[Dict]:
         """List all family connections (connected AND pending) for a user"""
-        print(f"DEBUG: Fetching family for user {user_id}")
         # 1. Get connections
         response = self.admin_supabase.table("family_connections").select(
             "*"
@@ -29,7 +28,6 @@ class FamilyService:
         ).in_("status", ["connected", "pending_sent"]).execute()
         
         data = response.data or []
-        print(f"DEBUG: Found {len(data)} connections")
         
         if not data:
             return []
@@ -43,16 +41,21 @@ class FamilyService:
         # 3. Fetch Profiles manually (Use Admin Client to bypass RLS)
         profiles_map = {}
         if profile_ids:
-
-             # profiles table seems to lack full_name/first_name in this env. Using phone_number as fallback.
-             p_res = self.admin_supabase.table("profiles").select("id, phone_number").in_("id", list(profile_ids)).execute()
+             # profiles table seems to lack full_name/first_name in this env. Using phone_number as fallback if needed.
+             # We try multiple fields for name: full_name, profile_name, first_name
+             p_res = self.admin_supabase.table("profiles").select("*").in_("id", list(profile_ids)).execute()
              if p_res.data:
                  for p in p_res.data:
-                     # Polyfill missing name fields for frontend compatibility
-                     p["first_name"] = p.get("phone_number", "User")
-                     p["last_name"] = ""
+                     # Try to derive a usable name
+                     name_candidates = [
+                         p.get("full_name"),
+                         p.get("profile_name"),
+                         p.get("first_name"),
+                         p.get("phone_number")
+                     ]
+                     final_name = next((n for n in name_candidates if n), "User")
+                     p["computed_name"] = final_name
                      profiles_map[p["id"]] = p
-
 
         # 4. Post-process
         results = []
@@ -71,21 +74,31 @@ class FamilyService:
             else:
                 connection_status = "pending"
 
-            # Determine WHICH profile to show
-            # If I am sender, show Receiver (connected_user_id)
-            # If I am receiver, show Sender (user_id)
+            # Determine target ("other person")
             target_id = conn["connected_user_id"] if is_sender else conn["user_id"]
-            target_profile = profiles_map.get(target_id)
+            target_profile = profiles_map.get(target_id) or {}
             
-            # Attach profile
-            # Frontend expects 'profiles' object
-            conn_with_profile = {
-                **conn,
+            # Resolve Display Name (Alias)
+            # If I am sender, I see sender_display_name
+            # If I am receiver, I see receiver_display_name
+            alias = conn.get("sender_display_name") if is_sender else conn.get("receiver_display_name")
+            
+            profile_name = target_profile.get("computed_name", "Unknown")
+            identifier = target_profile.get("phone_number") or target_profile.get("email") or "Hidden"
+            
+            # Final effective display name
+            display_name = alias or profile_name
+            
+            results.append({
+                "connection_id": conn["id"],
+                "user_id": target_id,
+                "display_name": display_name,
+                "profile_name": profile_name,
+                "phone": identifier,
+                "status": status,
                 "connection_status": connection_status,
-                "status": "good",
-                "profiles": target_profile or {"first_name": "Unknown", "last_name": ""}
-            }
-            results.append(conn_with_profile)
+                "created_at": conn["created_at"]
+            })
             
         return results
     
@@ -105,33 +118,40 @@ class FamilyService:
         if not can_add:
             raise ValueError(error_msg)
         
-        # Find target user via Admin Client
+        # Get Sender Profile Name (to populate sender_display_name)
+        sender_profile = self.admin_supabase.table("profiles").select("*").eq("id", user_id).single().execute()
+        sender_name = None
+        if sender_profile.data:
+            p = sender_profile.data
+            sender_name = p.get("full_name") or p.get("profile_name") or p.get("first_name") or p.get("phone_number")
+
+        # Find target user
         target_user_id = None
         
         if email:
-            # Try finding by email in profiles. NOTE: 'email' column might be missing, defaulting to Auth if possible?
-            # For now, if profile search fails, we can't find them by email in profiles table.
-            # But earlier logs showed 'email' might work? Step 249 logs showed successful profile query? 
-            # Wait, Step 249 logs used 'phone_number'.
-            # I will Comment this out or wrap in try/except if column might be missing.
             try:
-                 res = self.admin_supabase.table("profiles").select("id").eq("email", email).execute()
-                 if res.data:
-                     target_user_id = res.data[0]["id"]
-            except:
+                 # Use RPC to find user ID from auth.users securely
+                 res = self.admin_supabase.rpc("get_user_id_by_email", {"email": email}).execute()
+                 
+                 # Robustly handle RPC response (it might be a list of objects or other shapes)
+                 data = res.data
+                 
+                 if data and isinstance(data, list) and len(data) > 0:
+                     first_row = data[0]
+                     # Check if it's a dict and has 'id' or function name key
+                     if isinstance(first_row, dict):
+                         target_user_id = first_row.get("id") or first_row.get("get_user_id_by_email")
+                 
+            except Exception as e:
+                 print(f"Error looking up email: {e}")
                  pass
         
         if not target_user_id and phone_number:
-            # Try finding by phone (assuming 'phone_number' column exists in profiles)
-            # Note: Phone format must match exactly
             res = self.admin_supabase.table("profiles").select("id").eq("phone_number", phone_number).execute()
             if res.data:
                 target_user_id = res.data[0]["id"]
                 
         if not target_user_id:
-             # Logic for "Ghost" invite -> we store the email/phone and wait for them to join?
-             # For now, per user request "I have created two profiles", so user exists.
-             # If not found, raise error to debug.
              raise ValueError("User not found with these details")
 
         if target_user_id == user_id:
@@ -147,14 +167,19 @@ class FamilyService:
 
         connection_id = str(uuid.uuid4())
         
+        # When creating:
+        # sender_display_name = sender's own name (so receiver sees who it is)
+        # receiver_display_name = None (receiver sets it upon accept)
         connection_data = {
             "id": connection_id,
             "user_id": user_id,
             "connected_user_id": target_user_id,
-            "invited_email": email, # Keep for record
-            "nickname": nickname,
+            "invited_email": email,
+            "nickname": nickname, # Legacy field, keeping for safety
             "status": "pending_sent",
-            "created_at": datetime.now().isoformat()
+            "created_at": datetime.now().isoformat(),
+            "sender_display_name": sender_name,
+            "receiver_display_name": None
         }
         
         self.admin_supabase.table("family_connections").insert(connection_data).execute()
@@ -165,11 +190,10 @@ class FamilyService:
         self,
         connection_id: str,
         user_id: str,
-        nickname: Optional[str] = None
+        display_name: Optional[str] = None
     ) -> bool:
         """Accept a family connection request"""
         # I am the 'connected_user_id' (recipient)
-        # Status must be 'pending_sent' (from sender's perspective)
         
         response = self.admin_supabase.table("family_connections").select("*").eq(
             "id", connection_id
@@ -179,11 +203,43 @@ class FamilyService:
             return False
         
         # Update connection
-        self.admin_supabase.table("family_connections").update({
+        # If I accept, I can set my alias for them (receiver_display_name)
+        update_data = {
             "status": "connected",
-            # We might want to set a nickname for the Sender from my perspective? 
-            # The current table structure seems simple. 
-            # We'll just update status.
+            "updated_at": datetime.now().isoformat()
+        }
+        if display_name:
+            update_data["receiver_display_name"] = display_name
+
+        self.admin_supabase.table("family_connections").update(update_data).eq("id", connection_id).execute()
+        
+        return True
+
+    async def rename_connection(
+        self,
+        connection_id: str,
+        user_id: str,
+        new_display_name: str
+    ) -> bool:
+        """Rename a family connection (set alias)"""
+        # 1. Fetch connection to see if I am sender or receiver
+        response = self.admin_supabase.table("family_connections").select("*").eq(
+            "id", connection_id
+        ).or_(
+            f"user_id.eq.{user_id},connected_user_id.eq.{user_id}"
+        ).single().execute()
+
+        if not response.data:
+            return False
+            
+        conn = response.data
+        is_sender = conn["user_id"] == user_id
+        
+        # 2. Update the appropriate column
+        field = "sender_display_name" if is_sender else "receiver_display_name"
+        
+        self.admin_supabase.table("family_connections").update({
+            field: new_display_name,
             "updated_at": datetime.now().isoformat()
         }).eq("id", connection_id).execute()
         
