@@ -9,10 +9,16 @@ import io
 from app.core.config import settings
 
 
-# Explicitly set Tesseract path for Windows
 import os
+import logging
+
+logger = logging.getLogger(__name__)
+
+# Explicitly set Tesseract path for Windows
 if os.name == 'nt':
     pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+else:
+    logger.info("OCR: Running on non-Windows OS (Linux presumed). Relying on system PATH for Tesseract.")
 
 
 class OCRService:
@@ -46,6 +52,7 @@ class OCRService:
 
     def _run_tesseract_sync(self, image_data: bytes) -> str:
         """Synchronous Tesseract execution with image optimization"""
+        logger.info(f"OCR: Starting Tesseract execution on {len(image_data)} bytes")
         # Open image
         image = Image.open(io.BytesIO(image_data))
         
