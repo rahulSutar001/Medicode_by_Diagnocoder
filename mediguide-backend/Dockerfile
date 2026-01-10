@@ -1,26 +1,29 @@
-FROM python:3.11-slim
+FROM python:3.11
 
 WORKDIR /app
 
-# Install system dependencies including Tesseract and GL libs for OpenCV
-# libgl1 and libglib2.0-0 are required for opencv-python-headless
+# Install system dependencies
+# We use the full python image, but still need Tesseract and OpenCV libs
 RUN apt-get update && apt-get install -y \
+    build-essential \
     tesseract-ocr \
     libtesseract-dev \
     libgl1 \
     libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for cache optimization
+# Copy requirements
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# Copy app code
 COPY . .
 
-# Set default port (Railway will override this ENV with its own, but we use it as fallback)
+# Default port
 ENV PORT=8080
 
 # Start command
-# Using sh -c ensures environment variables are expanded correctly
 CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]
