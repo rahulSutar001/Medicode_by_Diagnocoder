@@ -206,7 +206,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setViewingMember,
       }}
     >
-      {children}
+      {isCheckingAuth ? null : children}
     </AppContext.Provider>
   );
 }

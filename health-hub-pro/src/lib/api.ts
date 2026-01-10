@@ -12,36 +12,35 @@ if (!API_BASE_URL) {
 }
 
 /**
- * Get authentication headers with Supabase JWT token
+ * Centralized API Client
+ * Ensures all requests are authenticated and logged
  */
-export async function getAuthHeaders(): Promise<Record<string, string>> {
-  const { data: { session } } = await supabase.auth.getSession();
-
-  if (!session?.access_token) {
-    throw new Error('User is not authenticated');
-  }
-
-  return {
-    Authorization: `Bearer ${session.access_token}`,
-    'Content-Type': 'application/json',
-  };
-}
-
-/**
- * Generic API request helper
- */
-async function apiRequest<T>(
+async function apiFetch<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const headers = await getAuthHeaders();
+  const { data: { session } } = await supabase.auth.getSession();
+
+  if (!session?.access_token) {
+    console.error("❌ No Supabase session found");
+    throw new Error('User is not authenticated');
+  }
+
+  console.log("✅ Using access token:", session.access_token.slice(0, 20), "...");
+
+  const headers: HeadersInit = {
+    ...options.headers,
+    'Authorization': `Bearer ${session.access_token}`,
+  };
+
+  // Auto-set Content-Type to json if not set and body is not FormData
+  if (!(options.body instanceof FormData) && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json';
+  }
 
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     ...options,
-    headers: {
-      ...headers,
-      ...options.headers,
-    },
+    headers,
   });
 
   if (!response.ok) {
@@ -64,30 +63,18 @@ export async function uploadReport(file: File, reportType?: string): Promise<{
   status: string;
   message: string;
 }> {
-  // Use helper to get valid token, but we only need Authorization header
-  // because Content-Type must be auto-set by fetch for FormData
-  const { Authorization } = await getAuthHeaders();
-
   const formData = new FormData();
   formData.append('file', file);
   if (reportType) {
     formData.append('report_type', reportType);
   }
 
-  const response = await fetch(`${API_BASE_URL}/reports/upload`, {
+  // apiFetch will handle auth headers. 
+  // We do NOT set Content-Type here so apiFetch/fetch detects FormData and sets multipart boundary
+  return apiFetch('/reports/upload', {
     method: 'POST',
-    headers: {
-      Authorization,
-    },
     body: formData,
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Upload failed' }));
-    throw new Error(error.message || 'Upload failed');
-  }
-
-  return response.json();
 }
 
 /**
@@ -118,7 +105,7 @@ export async function getReport(reportId: string): Promise<{
   created_at: string;
   updated_at: string;
 }> {
-  return apiRequest(`/reports/${reportId}`);
+  return apiFetch(`/reports/${reportId}`);
 }
 
 /**
@@ -130,7 +117,7 @@ export async function getReportSynthesis(reportId: string): Promise<{
   doctor_precis: string;
   status: string; // Added status
 }> {
-  return apiRequest(`/reports/${reportId}/synthesis`);
+  return apiFetch(`/reports/${reportId}/synthesis`);
 }
 
 /**
@@ -140,7 +127,7 @@ export async function generateReportSynthesis(reportId: string): Promise<{
   status: string;
   message: string;
 }> {
-  return apiRequest(`/reports/${reportId}/generate-synthesis`, {
+  return apiFetch(`/reports/${reportId}/generate-synthesis`, {
     method: 'POST',
   });
 }
@@ -149,7 +136,7 @@ export async function generateReportSynthesis(reportId: string): Promise<{
  * Delete a report
  */
 export async function deleteReport(reportId: string): Promise<void> {
-  return apiRequest(`/reports/${reportId}`, {
+  return apiFetch(`/reports/${reportId}`, {
     method: 'DELETE',
   });
 }
@@ -182,7 +169,7 @@ export async function listReports(params?: {
   if (params?.limit) queryParams.append('limit', params.limit.toString());
   if (params?.user_id) queryParams.append('target_user_id', params.user_id);
 
-  return apiRequest(`/reports?${queryParams.toString()}`);
+  return apiFetch(`/reports?${queryParams.toString()}`);
 }
 
 /**
@@ -202,7 +189,7 @@ export async function getReportParameters(reportId: string): Promise<Array<{
     next_steps: string[];
   }>;
 }>> {
-  return apiRequest(`/reports/${reportId}/parameters`);
+  return apiFetch(`/reports/${reportId}/parameters`);
 }
 
 /**
@@ -219,7 +206,7 @@ export async function sendChatMessage(
   response: string;
   created_at: string;
 }> {
-  return apiRequest(`/chat/reports/${reportId}/message`, {
+  return apiFetch(`/chat/reports/${reportId}/message`, {
     method: 'POST',
     body: JSON.stringify({ message, report_id: reportId }),
   });
@@ -237,7 +224,7 @@ export async function getChatHistory(reportId: string): Promise<{
   }>;
   total: number;
 }> {
-  return apiRequest(`/chat/reports/${reportId}/history`);
+  return apiFetch(`/chat/reports/${reportId}/history`);
 }
 
 /**
@@ -252,7 +239,7 @@ export async function getPremiumStatus(): Promise<{
   family_members_count: number;
   family_members_limit: number | null;
 }> {
-  return apiRequest('/premium/status');
+  return apiFetch('/premium/status');
 }
 // Family
 export interface FamilyMember {
@@ -267,25 +254,25 @@ export interface FamilyMember {
 }
 
 export async function getFamilyMembers(): Promise<FamilyMember[]> {
-  return apiRequest('/family/members');
+  return apiFetch('/family/members');
 }
 
 export async function inviteFamilyMember(data: { email?: string; phone_number?: string; nickname?: string }): Promise<{ connection_id: string; message: string }> {
-  return apiRequest('/family/invite', {
+  return apiFetch('/family/invite', {
     method: 'POST',
     body: JSON.stringify(data),
   });
 }
 
 export async function acceptFamilyConnection(connectionId: string, display_name?: string): Promise<{ message: string }> {
-  return apiRequest(`/family/accept/${connectionId}`, {
+  return apiFetch(`/family/accept/${connectionId}`, {
     method: 'POST',
     body: JSON.stringify({ display_name }),
   });
 }
 
 export async function renameFamilyConnection(connectionId: string, display_name: string): Promise<{ message: string }> {
-  return apiRequest(`/family/connections/${connectionId}/rename`, {
+  return apiFetch(`/family/connections/${connectionId}/rename`, {
     method: 'PATCH',
     body: JSON.stringify({ display_name }),
   });
@@ -298,7 +285,7 @@ export async function askMediBot(
   reportId: string,
   question: string
 ): Promise<{ response: string }> {
-  return apiRequest('/chatbot/ask', {
+  return apiFetch('/chatbot/ask', {
     method: 'POST',
     body: JSON.stringify({ report_id: reportId, question }),
   });
