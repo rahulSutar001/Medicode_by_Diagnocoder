@@ -5,7 +5,11 @@
 import { supabase } from './supabase';
 
 // Backend API base URL
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+const API_BASE_URL = import.meta.env.VITE_API_URL;
+
+if (!API_BASE_URL) {
+  throw new Error('VITE_API_URL is not defined in environment variables');
+}
 
 /**
  * Get authentication headers with Supabase JWT token
