@@ -14,15 +14,15 @@ if (!API_BASE_URL) {
 /**
  * Get authentication headers with Supabase JWT token
  */
-async function getAuthHeaders(): Promise<HeadersInit> {
+export async function getAuthHeaders(): Promise<Record<string, string>> {
   const { data: { session } } = await supabase.auth.getSession();
 
   if (!session?.access_token) {
-    throw new Error('Not authenticated. Please log in.');
+    throw new Error('User is not authenticated');
   }
 
   return {
-    'Authorization': `Bearer ${session.access_token}`,
+    Authorization: `Bearer ${session.access_token}`,
     'Content-Type': 'application/json',
   };
 }
@@ -64,11 +64,9 @@ export async function uploadReport(file: File, reportType?: string): Promise<{
   status: string;
   message: string;
 }> {
-  const { data: { session } } = await supabase.auth.getSession();
-
-  if (!session?.access_token) {
-    throw new Error('Not authenticated. Please log in.');
-  }
+  // Use helper to get valid token, but we only need Authorization header
+  // because Content-Type must be auto-set by fetch for FormData
+  const { Authorization } = await getAuthHeaders();
 
   const formData = new FormData();
   formData.append('file', file);
@@ -79,7 +77,7 @@ export async function uploadReport(file: File, reportType?: string): Promise<{
   const response = await fetch(`${API_BASE_URL}/reports/upload`, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${session.access_token}`,
+      Authorization,
     },
     body: formData,
   });
