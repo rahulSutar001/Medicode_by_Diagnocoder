@@ -61,46 +61,77 @@ async def debug_token_check(body: TokenCheck):
 @app.post("/api/v1/debug/ocr")
 async def debug_ocr(file: UploadFile = File(...)):
     """Diagnostic endpoint to test Tesseract directly on the server."""
-    try:
-        import pytesseract
-        import shutil
-        import os
-        from PIL import Image
-        import io
+    import pytesseract
+    import shutil
+    import os
+    from PIL import Image
+    import io
+    import sys
 
+    response_data = {
+        "status": "pending",
+        "env_path": os.environ.get("PATH", ""),
+        "python_executable": sys.executable,
+        "cwd": os.getcwd(),
+        "tesseract_locations_checked": {},
+        "shutil_which_tesseract": str(shutil.which("tesseract")),
+    }
+
+    try:
         # 1. Log Request
         logger.info(f"Debug OCR request received for file: {file.filename}")
 
-        # 2. Check Tesseract Version/Path
+        # 2. Check manually in common paths
+        common_paths = [
+            "/usr/bin/tesseract",
+            "/usr/local/bin/tesseract",
+            "/nix/var/nix/profiles/default/bin/tesseract",
+            "/bin/tesseract"
+        ]
+        
+        found_binary = None
+        for p in common_paths:
+            exists = os.path.exists(p)
+            response_data["tesseract_locations_checked"][p] = exists
+            if exists:
+                found_binary = p
+
+        # 3. Try to configure pytesseract if we found it
+        if found_binary and not shutil.which("tesseract"):
+             pytesseract.pytesseract.tesseract_cmd = found_binary
+             response_data["manual_path_configured"] = found_binary
+
+        # 4. Check Tesseract Version/Path (After potential fix)
         try:
             version = pytesseract.get_tesseract_version()
             cli_path = pytesseract.pytesseract.tesseract_cmd
         except Exception as e:
             version = f"Error: {e}"
             cli_path = "Unknown"
+        
+        response_data["tesseract_version"] = str(version)
+        response_data["tesseract_cmd_final"] = str(cli_path)
 
-        # 3. Read Image
+        # 5. Read Image
         contents = await file.read()
         image = Image.open(io.BytesIO(contents))
+        response_data["image_size"] = image.size
 
-        # 4. Run OCR synchronously for debug simplicity
+        # 6. Run OCR
         text = pytesseract.image_to_string(image)
+        
+        response_data["status"] = "success"
+        response_data["extracted_text_preview"] = text[:500] if text else "No text extracted"
+        response_data["full_text_length"] = len(text)
 
-        return {
-            "status": "success",
-            "tesseract_version": str(version),
-            "tesseract_cmd": cli_path,
-            "image_size": image.size,
-            "extracted_text_preview": text[:500] if text else "No text extracted",
-            "full_text_length": len(text)
-        }
+        return response_data
+
     except Exception as e:
         import traceback
-        return {
-            "status": "failed",
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }
+        response_data["status"] = "failed"
+        response_data["error"] = str(e)
+        response_data["traceback"] = traceback.format_exc()
+        return response_data
 
 
 @app.get("/")
