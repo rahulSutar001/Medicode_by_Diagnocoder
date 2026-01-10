@@ -42,9 +42,9 @@ export function HomeScreen() {
             </h1>
             <p className="text-body text-text-secondary mt-1">{formatDate()}</p>
           </div>
-          
+
           {/* Premium Indicator */}
-          <button 
+          <button
             onClick={() => setShowPremiumModal(true)}
             className="flex flex-col items-end"
           >
@@ -62,7 +62,7 @@ export function HomeScreen() {
         <div className="card-elevated p-5 border-2 border-primary relative overflow-hidden animate-fade-in">
           {/* Background Pattern */}
           <div className="absolute inset-0 bg-medical-pattern opacity-30" />
-          
+
           <div className="relative">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-success/10 flex items-center justify-center">
@@ -71,7 +71,11 @@ export function HomeScreen() {
               <h2 className="text-subtitle text-foreground">Your Digital Health Locker</h2>
             </div>
 
-            <Button size="lg" className="w-full mb-4">
+            <Button
+              size="lg"
+              className="w-full mb-4"
+              onClick={() => window.open('https://abdmbeta.abdm.gov.in/', '_blank', 'noopener,noreferrer')}
+            >
               Connect to ABDM
             </Button>
 

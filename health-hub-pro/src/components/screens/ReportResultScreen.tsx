@@ -108,7 +108,7 @@ export function ReportResultScreen() {
     );
   }
 
-  if (!report || results.length === 0) {
+  if (!report) {
     return (
       <div className="absolute inset-0 bg-background flex items-center justify-center">
         <p className="text-body text-text-secondary">No report data found</p>
@@ -209,33 +209,67 @@ export function ReportResultScreen() {
           <ReportSynthesis reportId={currentReportId!} />
         ) : (
           <>
-
-            {/* Summary Card */}
-            <div className={cn(
-              "card-elevated p-5 mb-6 border-l-4",
-              overallStatus === 'warning' ? 'border-l-warning bg-warning-light' : 'border-l-success bg-success-light'
-            )}>
-              <div className="flex items-center gap-3 mb-3">
-                {overallStatus === 'warning' ? (
-                  <AlertTriangle className="w-6 h-6 text-warning" />
-                ) : (
-                  <Check className="w-6 h-6 text-success" />
-                )}
-                <h2 className="text-subtitle text-foreground font-semibold">
-                  {overallStatus === 'warning' ? 'Attention Needed' : 'Normal'}
-                </h2>
+            {/* Failed Status */}
+            {report.status === 'failed' && (
+              <div className="card-elevated p-5 mb-6 border-l-4 border-l-destructive bg-destructive/10">
+                <div className="flex items-center gap-3 mb-2">
+                  <AlertCircle className="w-6 h-6 text-destructive" />
+                  <h2 className="text-subtitle text-foreground font-semibold">Processing Failed</h2>
+                </div>
+                <p className="text-body text-text-secondary">
+                  {report.error_message || "We couldn't extract data from this image. Please ensure it's a clear photo of a medical lab report."}
+                </p>
               </div>
-              <ul className="space-y-1">
-                <li className="text-body text-text-secondary flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-destructive" />
-                  2 values above normal range
-                </li>
-                <li className="text-body text-text-secondary flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-success" />
-                  2 values within normal range
-                </li>
-              </ul>
-            </div>
+            )}
+
+            {/* Processing Status */}
+            {report.status === 'processing' && (
+              <div className="card-elevated p-5 mb-6 border-l-4 border-l-primary bg-primary/10">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  <h2 className="text-subtitle text-foreground font-semibold">Processing...</h2>
+                </div>
+                <p className="text-body text-text-secondary">
+                  {report.progress ? `Analyzing report (${report.progress}%)` : "We are analyzing your report. This might take a moment."}
+                </p>
+              </div>
+            )}
+
+            {/* Results or Empty State */}
+            {results.length > 0 ? (
+              <>
+                {/* Summary Card */}
+                <div className={cn(
+                  "card-elevated p-5 mb-6 border-l-4",
+                  overallStatus === 'warning' ? 'border-l-warning bg-warning-light' : 'border-l-success bg-success-light'
+                )}>
+                  <div className="flex items-center gap-3 mb-3">
+                    {overallStatus === 'warning' ? (
+                      <AlertTriangle className="w-6 h-6 text-warning" />
+                    ) : (
+                      <Check className="w-6 h-6 text-success" />
+                    )}
+                    <h2 className="text-subtitle text-foreground font-semibold">
+                      {overallStatus === 'warning' ? 'Attention Needed' : 'Normal'}
+                    </h2>
+                  </div>
+                  <ul className="space-y-1">
+                    <li className="text-body text-text-secondary flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-destructive" />
+                      {results.filter(r => r.flag !== 'normal').length} values out of range
+                    </li>
+                    <li className="text-body text-text-secondary flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-success" />
+                      {results.filter(r => r.flag === 'normal').length} values within normal range
+                    </li>
+                  </ul>
+                </div>
+              </>
+            ) : report.status === 'completed' ? (
+              <div className="text-center py-10">
+                <p className="text-body text-text-secondary">No structured data found in this report.</p>
+              </div>
+            ) : null}
 
             {/* Results Table */}
             <div className="space-y-3">
