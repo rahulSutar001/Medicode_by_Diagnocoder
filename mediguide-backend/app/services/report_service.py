@@ -113,9 +113,15 @@ class ReportService:
         image_data: bytes,
     ):
         try:
+            # 10% - Starting OCR
+            await self._update_progress(report_id, 10)
+            
             # OCR
             text = await self.ocr_service.extract_text(image_data)
             print(f"[DEBUG] OCR text (first 500 chars): {text[:500]}")
+
+            # 40% - OCR Complete, Starting Parsing
+            await self._update_progress(report_id, 40)
 
             parsed_data = self.ocr_service.parse_structured_data(text)
             print(f"[DEBUG] Parsed {len(parsed_data.get('parameters', []))} parameters")
@@ -132,9 +138,9 @@ class ReportService:
 
             parameters = []
             is_premium = await self.premium_service.check_subscription(user_id)
-
-            parameters = []
-            is_premium = await self.premium_service.check_subscription(user_id)
+            
+            # 50% - Parsed, Preparing for AI
+            await self._update_progress(report_id, 50)
             
             # 1. First pass: Create and insert all parameter records
             param_records = []
@@ -181,6 +187,9 @@ class ReportService:
             # Batch Insert Parameters
             if param_records:
                 self.storage_client.table("report_parameters").insert(param_records).execute()
+            
+            # 60% - Parameters Saved, Calling AI
+            await self._update_progress(report_id, 60)
 
             # 2. Call AI: Single Batch Request
             print(f"[DEBUG] Generating batched explanations for {len(param_data_list)} parameters...")
@@ -188,6 +197,9 @@ class ReportService:
                 parameters=param_data_list,
                 is_premium=is_premium
             )
+            
+            # 80% - AI Explanations Generated
+            await self._update_progress(report_id, 80)
             
             # 3. Process results and batch insert explanations
             # Map parameters by name to associate IDs
@@ -228,6 +240,7 @@ class ReportService:
             self.db.table("reports").update(
                 {
                     "status": "completed",
+                    "progress": 100,
                     "flag_level": flag_level,
                     "updated_at": datetime.utcnow().isoformat(),
                 }
@@ -523,6 +536,14 @@ class ReportService:
             }).eq("report_id", report_id).execute()
         except Exception as e:
             print(f"[CRITICAL] Failed to mark synthesis failure: {e}")
+
+    async def _update_progress(self, report_id: str, progress: int):
+        """Helper to safely update report progress"""
+        try:
+            self.db.table("reports").update({"progress": progress}).eq("id", report_id).execute()
+        except Exception:
+            # Ignore errors (e.g., if progress column doesn't exist yet)
+            pass
 
     async def get_report_synthesis(self, report_id: str, user_id: str) -> Dict[str, Any]:
         """

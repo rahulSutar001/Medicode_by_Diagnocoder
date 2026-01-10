@@ -108,7 +108,7 @@ async def get_report_status(
     return ReportStatusResponse(
         report_id=report_id,
         status=report.get("status", "processing"),
-        progress=None,
+        progress=report.get("progress"),
         error_message=report.get("error_message"),
     )
 
