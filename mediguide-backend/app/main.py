@@ -57,6 +57,52 @@ async def debug_token_check(body: TokenCheck):
         return {"status": "invalid", "error": str(e), "supabase_url": settings.SUPABASE_URL}
 
 
+
+@app.post("/api/v1/debug/ocr")
+async def debug_ocr(file: UploadFile = File(...)):
+    """Diagnostic endpoint to test Tesseract directly on the server."""
+    try:
+        import pytesseract
+        import shutil
+        import os
+        from PIL import Image
+        import io
+
+        # 1. Log Request
+        logger.info(f"Debug OCR request received for file: {file.filename}")
+
+        # 2. Check Tesseract Version/Path
+        try:
+            version = pytesseract.get_tesseract_version()
+            cli_path = pytesseract.pytesseract.tesseract_cmd
+        except Exception as e:
+            version = f"Error: {e}"
+            cli_path = "Unknown"
+
+        # 3. Read Image
+        contents = await file.read()
+        image = Image.open(io.BytesIO(contents))
+
+        # 4. Run OCR synchronously for debug simplicity
+        text = pytesseract.image_to_string(image)
+
+        return {
+            "status": "success",
+            "tesseract_version": str(version),
+            "tesseract_cmd": cli_path,
+            "image_size": image.size,
+            "extracted_text_preview": text[:500] if text else "No text extracted",
+            "full_text_length": len(text)
+        }
+    except Exception as e:
+        import traceback
+        return {
+            "status": "failed",
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
+
 @app.get("/")
 async def root():
     """Root endpoint"""
