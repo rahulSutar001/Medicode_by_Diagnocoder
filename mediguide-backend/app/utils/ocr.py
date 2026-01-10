@@ -39,7 +39,13 @@ class OCRService:
             raise ValueError(f"Unsupported OCR service: {self.service}")
     
     async def _tesseract_ocr(self, image_data: bytes) -> str:
-        """Extract text using Tesseract OCR with image preprocessing"""
+        """Extract text using Tesseract OCR (Non-blocking wrapper)"""
+        import asyncio
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, self._run_tesseract_sync, image_data)
+
+    def _run_tesseract_sync(self, image_data: bytes) -> str:
+        """Synchronous Tesseract execution with image optimization"""
         # Open image
         image = Image.open(io.BytesIO(image_data))
         
@@ -47,11 +53,20 @@ class OCRService:
         if image.mode != 'RGB':
             image = image.convert('RGB')
         
-        # Image preprocessing to improve OCR accuracy
-        # Resize if too small (minimum 300px width)
+        # Image preprocessing
         width, height = image.size
+        
+        # 1. Resize if too small (upscale for accuracy)
         if width < 300:
             scale = 300 / width
+            new_width = int(width * scale)
+            new_height = int(height * scale)
+            image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            
+        # 2. Resize if too large (downscale for performance/memory)
+        # 1800px width is usually sufficient for A4 documents
+        elif width > 1800:
+            scale = 1800 / width
             new_width = int(width * scale)
             new_height = int(height * scale)
             image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
