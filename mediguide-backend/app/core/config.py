@@ -10,13 +10,13 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables"""
     
     # Supabase Configuration
-    SUPABASE_URL: str
-    SUPABASE_ANON_KEY: str
+    SUPABASE_URL: Optional[str] = ""
+    SUPABASE_ANON_KEY: Optional[str] = ""
     SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None  # Only for storage operations
     
     @model_validator(mode='after')
     def ensure_supabase_url_trailing_slash(self):
-        if not self.SUPABASE_URL.endswith('/'):
+        if self.SUPABASE_URL and not self.SUPABASE_URL.endswith('/'):
             self.SUPABASE_URL += '/'
         return self
     
@@ -82,6 +82,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "ignore"
 
 
 settings = Settings()
