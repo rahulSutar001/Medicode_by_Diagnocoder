@@ -42,6 +42,20 @@ app.include_router(family.router, prefix=settings.API_V1_PREFIX)
 app.include_router(premium.router, prefix=settings.API_V1_PREFIX)
 app.include_router(chatbot.router, prefix=settings.API_V1_PREFIX)
 
+from pydantic import BaseModel
+class TokenCheck(BaseModel):
+    token: str
+
+@app.post("/api/v1/debug/token")
+async def debug_token_check(body: TokenCheck):
+    """Temporary debug endpoint to test token verification logic"""
+    try:
+        from app.core.security import verify_jwt_token
+        user = await verify_jwt_token(body.token)
+        return {"status": "valid", "user": user, "supabase_url": settings.SUPABASE_URL}
+    except Exception as e:
+        return {"status": "invalid", "error": str(e), "supabase_url": settings.SUPABASE_URL}
+
 
 @app.get("/")
 async def root():

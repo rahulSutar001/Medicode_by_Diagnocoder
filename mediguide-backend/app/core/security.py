@@ -138,12 +138,10 @@ async def get_current_user(
             detail="Authorization header missing"
         )
 
-    # Safe token extraction
-    if "Bearer " in authorization:
-        token = authorization.replace("Bearer ", "").strip()
-    else:
-        # Fallback for non-standard headers, though Bearer is expected
-        token = authorization.strip()
+    # Safe, case-insensitive token extraction
+    import re
+    # Remove "Bearer " prefix (case insensitive) and whitespace
+    token = re.sub(r"^bearer\s+", "", authorization, flags=re.IGNORECASE).strip()
 
     print(f"[AUTH DEBUG] Extracted Token (first 20 chars): {token[:20]}...")
 
