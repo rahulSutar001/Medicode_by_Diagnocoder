@@ -240,12 +240,17 @@ class ReportService:
 
         except Exception as e:
             print(f"[ERROR] Processing failed for {report_id}: {e}")
-            self.db.table("reports").update(
-                {
-                    "status": "failed",
-                    "updated_at": datetime.utcnow().isoformat(),
-                }
-            ).eq("id", report_id).execute()
+            # Try to save error to reports table
+            try:
+                self.db.table("reports").update(
+                    {
+                        "status": "failed",
+                        "error_message": str(e),
+                        "updated_at": datetime.utcnow().isoformat(),
+                    }
+                ).eq("id", report_id).execute()
+            except Exception as db_e:
+                print(f"[ERROR] Failed to update error status: {db_e}")
             raise
 
     async def get_report(self, report_id: str, user_id: str) -> Optional[Dict]:

@@ -109,7 +109,7 @@ async def get_report_status(
         report_id=report_id,
         status=report.get("status", "processing"),
         progress=None,
-        error_message=None,
+        error_message=report.get("error_message"),
     )
 
 
