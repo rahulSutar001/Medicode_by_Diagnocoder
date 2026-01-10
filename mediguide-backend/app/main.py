@@ -22,17 +22,17 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# CORS middleware
+# CORS middleware - use settings to allow environment configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
+    allow_origins=settings.CORS_ORIGINS + [
         "https://mediguide-version1001.vercel.app",
         "https://mediguide-version1.vercel.app",
-        "http://localhost:5173"  # optional for local development
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Include routers
