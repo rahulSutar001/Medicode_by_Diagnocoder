@@ -9,8 +9,10 @@ import io
 from app.core.config import settings
 
 
-# Explicitly set Tesseract path
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+# Explicitly set Tesseract path for Windows
+import os
+if os.name == 'nt':
+    pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
 
 class OCRService:
