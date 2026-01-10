@@ -35,7 +35,7 @@ class ReportResponse(BaseModel):
     """Response model for report details"""
     id: str
     user_id: str
-    date: str
+    date: Optional[str] = None
     type: str
     lab_name: Optional[str] = None
     flag_level: Literal['green', 'yellow', 'red']
