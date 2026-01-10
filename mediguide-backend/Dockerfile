@@ -23,5 +23,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Use shell form of CMD to ensure variable expansion works
-CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}
+# Copy and make entrypoint executable
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Use entrypoint script
+ENTRYPOINT ["/entrypoint.sh"]
