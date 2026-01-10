@@ -138,16 +138,13 @@ async def get_current_user(
             detail="Authorization header missing"
         )
 
-    try:
-        scheme, token = authorization.split()
-        if scheme.lower() != "bearer":
-            print(f"[AUTH DEBUG] Invalid scheme: {scheme}")
-            raise ValueError
-    except ValueError:
-        print("[AUTH DEBUG] ValueError splitting header")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid Authorization header format"
-        )
+    # Safe token extraction
+    if "Bearer " in authorization:
+        token = authorization.replace("Bearer ", "").strip()
+    else:
+        # Fallback for non-standard headers, though Bearer is expected
+        token = authorization.strip()
+
+    print(f"[AUTH DEBUG] Extracted Token (first 20 chars): {token[:20]}...")
 
     return await verify_jwt_token(token)
