@@ -38,6 +38,14 @@ async function apiFetch<T>(
     headers['Content-Type'] = 'application/json';
   }
 
+  console.log("API REQUEST:", {
+    url: `${API_BASE_URL}${endpoint}`,
+    tokenPresent: !!session?.access_token,
+    tokenPreview: session?.access_token?.slice(0, 20),
+  });
+
+  console.log("HEADERS SENT:", headers);
+
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     ...options,
     headers,

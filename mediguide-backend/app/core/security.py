@@ -87,15 +87,18 @@ async def verify_jwt_token(token: str) -> dict:
         response = supabase.auth.get_user(token)
 
         if not response.user:
+            print("[AUTH DEBUG] Supabase rejected token (no user returned)")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token"
             )
 
+        # Optional: Print decoded for verification of audience
         decoded = jwt.decode(
             token,
             options={"verify_signature": False}
         )
+        print(f"[AUTH DEBUG] Token Decoded: {decoded}")
 
         return {
             "user_id": decoded.get("sub"),
@@ -103,10 +106,14 @@ async def verify_jwt_token(token: str) -> dict:
             "role": decoded.get("role", "authenticated")
         }
 
-    except Exception:
+    except Exception as e:
+        print(f"[AUTH DEBUG] Token verification failed: {str(e)}")
+        # Print Supabase URL to confirm environment
+        print(f"[AUTH DEBUG] Checking against Supabase URL: {settings.SUPABASE_URL}")
+        
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token verification failed"
+            detail=f"Token verification failed: {str(e)}"
         )
 
 
@@ -120,7 +127,12 @@ async def get_current_user(
     """
     FastAPI dependency to extract and verify the current user
     """
+    # DEBUG: Print critical auth info
+    print(f"[AUTH DEBUG] Authorization Header: {authorization}")
+    print(f"[AUTH DEBUG] Supabase URL: {settings.SUPABASE_URL}")
+
     if not authorization:
+        print("[AUTH DEBUG] No Authorization header present")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authorization header missing"
@@ -129,8 +141,10 @@ async def get_current_user(
     try:
         scheme, token = authorization.split()
         if scheme.lower() != "bearer":
+            print(f"[AUTH DEBUG] Invalid scheme: {scheme}")
             raise ValueError
     except ValueError:
+        print("[AUTH DEBUG] ValueError splitting header")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid Authorization header format"
