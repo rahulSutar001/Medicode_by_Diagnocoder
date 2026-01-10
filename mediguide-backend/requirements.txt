@@ -6,8 +6,9 @@ uvicorn[standard]==0.34.0
 python-multipart==0.0.6
 
 # Supabase
-supabase==2.3.0
-postgrest==0.13.0
+supabase==2.9.0
+# postgrest handled by supabase
+
 
 # Authentication & Security
 python-jose[cryptography]==3.3.0
@@ -36,4 +37,4 @@ pydantic==2.10.4
 # Development
 pytest==7.4.4
 pytest-asyncio==0.23.3
-httpx==0.24.1
+
