@@ -25,7 +25,11 @@ app = FastAPI(
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=[
+        "https://mediguide-version1001.vercel.app",
+        "https://mediguide-version1.vercel.app",
+        "http://localhost:5173"  # optional for local development
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
