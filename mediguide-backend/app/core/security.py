@@ -3,7 +3,7 @@ Security utilities for JWT verification and Supabase access
 """
 
 from typing import Optional
-from fastapi import HTTPException, status, Header, Request
+from fastapi import HTTPException, status, Header, Request, Depends
 from supabase import create_client, Client
 from supabase import create_client
 from app.core.config import settings
@@ -127,12 +127,7 @@ async def get_current_user(
     """
     FastAPI dependency to extract and verify the current user
     """
-    # DEBUG: Print critical auth info
-    print(f"[AUTH DEBUG] Authorization Header: {authorization}")
-    print(f"[AUTH DEBUG] Supabase URL: {settings.SUPABASE_URL}")
-
     if not authorization:
-        print("[AUTH DEBUG] No Authorization header present")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authorization header missing"
@@ -140,9 +135,27 @@ async def get_current_user(
 
     # Safe, case-insensitive token extraction
     import re
-    # Remove "Bearer " prefix (case insensitive) and whitespace
     token = re.sub(r"^bearer\s+", "", authorization, flags=re.IGNORECASE).strip()
 
-    print(f"[AUTH DEBUG] Extracted Token (first 20 chars): {token[:20]}...")
-
     return await verify_jwt_token(token)
+
+
+# Admin-specific emails allowed to access admin routes
+ADMIN_EMAILS = [
+    "rahulsutar977@gmail.com",
+    "rahul@example.com",
+    "sutarrahul709@gmail.com" # Example placeholder
+]
+
+async def get_admin_user(
+    current_user: dict = Depends(get_current_user)
+) -> dict:
+    """
+    FastAPI dependency to verify if current user is an admin
+    """
+    if current_user.get("email") not in ADMIN_EMAILS:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required"
+        )
+    return current_user

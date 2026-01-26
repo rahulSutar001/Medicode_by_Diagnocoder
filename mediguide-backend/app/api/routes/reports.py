@@ -11,7 +11,6 @@ from fastapi import (
     BackgroundTasks,
     Request,
 )
-from typing import Optional
 
 from app.core.dependencies import get_user_id, require_premium
 from app.services.report_service import ReportService
@@ -19,7 +18,6 @@ from app.schemas.report import (
     ReportUploadResponse,
     ReportResponse,
     ReportListRequest,
-    ReportStatusResponse,
     ReportStatusResponse,
     CompareReportsRequest,
     TestParameterResponse,
@@ -42,6 +40,7 @@ async def upload_report(
     user_id: str = Depends(get_user_id),
     background_tasks: BackgroundTasks = BackgroundTasks(),
 ):
+    print(f"[DEBUG] Upload Endpoint Hit. Type: {report_type}, Filename: {file.filename}, Content-Type: {file.content_type}")
     if file.content_type not in [
         "image/jpeg",
         "image/png",
@@ -62,7 +61,8 @@ async def upload_report(
         )
 
     try:
-        service = ReportService(request)  # ✅ PASS REQUEST
+        # Pass request to service layer to handle auth and background processing
+        service = ReportService(request)
         report_id = await service.create_report(
             user_id=user_id,
             image_data=image_data,
@@ -79,7 +79,7 @@ async def upload_report(
 
     except ValueError as e:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
     except Exception as e:
@@ -88,7 +88,7 @@ async def upload_report(
         print(f"[ERROR IN UPLOAD]: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to upload report: {str(e)}",
+            detail=f"Failed to process report: {str(e)}",
         )
 
 

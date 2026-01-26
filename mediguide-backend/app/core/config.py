@@ -15,18 +15,24 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None  # Only for storage operations
     
     @model_validator(mode='after')
-    def ensure_supabase_url_trailing_slash(self):
+    def clean_supabase_config(self):
         if self.SUPABASE_URL and not self.SUPABASE_URL.endswith('/'):
             self.SUPABASE_URL += '/'
+        if self.SUPABASE_ANON_KEY:
+            self.SUPABASE_ANON_KEY = self.SUPABASE_ANON_KEY.strip()
+        if self.SUPABASE_SERVICE_ROLE_KEY:
+            self.SUPABASE_SERVICE_ROLE_KEY = self.SUPABASE_SERVICE_ROLE_KEY.strip()
         return self
     
-    # OpenAI Configuration (for AI explanations and chatbot)
-    OPENAI_API_KEY: Optional[str] = None
-    OPENAI_MODEL: str = "gpt-4o-mini"  # Cost-effective, can upgrade to gpt-4
+    # OpenAI Configuration (removed - migrated to Gemini)
+    # OPENAI_API_KEY: Optional[str] = None
+    # OPENAI_MODEL: str = "gpt-4o-mini"
+
     
     # OCR Configuration
     OCR_SERVICE: str = "tesseract"  # Options: tesseract, google_vision, aws_textract
     GOOGLE_VISION_API_KEY: Optional[str] = None
+    GOOGLE_API_KEY: Optional[str] = None
     AWS_ACCESS_KEY_ID: Optional[str] = None
     AWS_SECRET_ACCESS_KEY: Optional[str] = None
     

@@ -3,17 +3,20 @@ Chatbot Service - Core logic for MediBot
 Highlights:
 - Context assembly from report data
 - Strict safety prompt construction
-- OpenAI interaction
+- Gemini interaction
 """
 import json
 from typing import Dict, List, Optional
-from openai import OpenAI
 from app.core.config import settings
 
 # Strict System Prompt
 # Derived from user requirements for safety and isolation
 MEDIBOT_SYSTEM_PROMPT = """You are MediBot, a helpful and strictly informational AI assistant inside the MediGuide app.
-Your goal is to help users understand their medical reports based on the provided structured data.
+Your goal is help users understand their medical reports based on the provided structured data.
+
+CONSTRAINTS:
+1. ANSWER ONLY BASED ON THE PROVIDED CONTEXT. Do not use outside knowledge unless it is general medical definition.
+2. If the user asks about something not in the report, politely refuse.
 
 CONTEXT:
 You will be provided with:
@@ -26,8 +29,7 @@ STRICT SAFETY RULES (NON-NEGOTIABLE):
 2. NO "YOU HAVE": Never say "You have [condition]". Instead say "This value suggests..." or "Elevated levels can be associated with...".
 3. NO "YOU SHOULD": Never give personal medical advice (e.g., "You should take iron supplements"). Instead say "Standard treatments for this often include... but consult your doctor."
 4. REFER TO DOCTOR: For any decision-making, diagnosis, or treatment question, explicitly advise the user to consult a doctor.
-5. SCOPE: Answer questions primarily based on the provided REPORT CONTEXT. If a question is general health info (unrelated to report) but safe, you may answer it generally.
-6. REFUSAL: If the user asks "Do I have cancer?" or "What medicine should I take?", you MUST refuse to answer and redirect to a professional.
+5. REFUSAL: If the user asks "Do I have cancer?" or "What medicine should I take?", you MUST refuse to answer and redirect to a professional.
 
 TONE:
 - Professional, empathetic, simplified, and educational.
@@ -42,12 +44,8 @@ A clear, safe text response.
 
 class ChatbotService:
     def __init__(self):
-        if not settings.OPENAI_API_KEY:
-            raise ValueError("OPENAI_API_KEY not configured")
-        self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
-        self.model = "gpt-4o" # Using a capable model for safety, or settings.OPENAI_MODEL if preferred
-        if hasattr(settings, "OPENAI_MODEL"):
-            self.model = settings.OPENAI_MODEL
+        from app.services.gemini_service import GeminiService
+        self.gemini = GeminiService()
 
     async def generate_response(
         self, 
@@ -57,7 +55,7 @@ class ChatbotService:
         explanations: List[Dict]
     ) -> str:
         """
-        Generates a safe response to the user's question given the report context.
+        Generates a safe response to the user's question given the report context using Gemini.
         """
         
         # 1. Pre-check for obviously unsafe keywords (Rule-based safety layer)
@@ -69,21 +67,51 @@ class ChatbotService:
         # 2. Build Context String
         context_str = self._build_context_json(report_data, parameters, explanations)
         
-        # 3. Call LLM
+        # 3. Call Gemini
+        # We enforce the system prompt by prepending it to the context or relying on GeminiService's internal handling.
+        # Ideally, we pass the system prompt to GeminiService, but GeminiService.chat_with_report currently takes context + question.
+        # Let's rely on chat_with_report but passing the strict system prompt as part of the context block or modifying GeminiService.
+        # Given constraints, I'll prepend the system prompt to the context being sent.
+        
+        full_prompt = f"{MEDIBOT_SYSTEM_PROMPT}\n\nCONTEXT:\n{context_str}"
+        
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": MEDIBOT_SYSTEM_PROMPT},
-                    {"role": "user", "content": f"REPORT CONTEXT:\n{context_str}\n\nUSER QUESTION: {question}"}
-                ],
-                temperature=0.3, # Low temperature for factual consistency
-                max_tokens=500
-            )
-            return response.choices[0].message.content
+            return self.gemini.chat_with_report(full_prompt, question)
         except Exception as e:
-            print(f"[ERROR] Chatbot LLM Call failed: {e}")
+            print(f"[ERROR] Chatbot Gemini Call failed: {e}")
             return "I'm having trouble connecting to my knowledge base right now. Please try again later."
+
+    def _build_context_json(self, report: Dict, params: List[Dict], explanations: List[Dict]) -> str:
+        """Helper to format data for the LLM"""
+        
+        # Contextualize: Map explanations to parameters if possible
+        clean_params = []
+        for p in params:
+            item = {
+                "name": p.get("name"),
+                "value": p.get("value"),
+                "unit": p.get("unit"),
+                "ref_range": p.get("range") or p.get("normal_range"),
+                "flag": p.get("flag"),
+            }
+            # Try to find explanation
+            expl = next((e for e in explanations if e.get("parameter_id") == p.get("id")), None)
+            if expl:
+                item["explanation_meaning"] = expl.get("meaning")
+            
+            clean_params.append(item)
+            
+        context = {
+            "report_metadata": {
+                "type": report.get("type"),
+                "date": report.get("date"),
+                "lab": report.get("lab_name"),
+                "overall_flag": report.get("flag_level")
+            },
+            "parameters": clean_params
+        }
+        
+        return json.dumps(context, indent=2)
 
     def _build_context_json(self, report: Dict, params: List[Dict], explanations: List[Dict]) -> str:
         """Helper to format data for the LLM"""

@@ -59,6 +59,43 @@ class ReportService:
         report_type: Optional[str] = None,
         background_tasks: Optional[BackgroundTasks] = None,
     ) -> str:
+        
+        # --- SEQUENTIAL VALIDATION PIPELINE ---
+        
+        from app.services.gemini_service import GeminiService
+        from app.utils.image_processing import check_blur, enhance_image
+        
+        gemini = GeminiService()
+
+        # 1. AI Medical Check
+        print("[VALIDATION] Checking if image is a medical report...")
+        is_medical = gemini.validate_medical_report(image_data)
+        if not is_medical:
+             raise ValueError("Only medical reports are accepted. Please upload a valid medical document.")
+
+        # 2. Blur Check 1
+        print("[VALIDATION] Checking for blur...")
+        is_blurry = check_blur(image_data)
+        
+        final_image_data = image_data
+        
+        if is_blurry:
+            print("[VALIDATION] Image is blurry. Attempting enhancement...")
+            # 3. Enhance
+            enhanced_data = enhance_image(image_data)
+            
+            # 4. Blur Check 2
+            still_blurry = check_blur(enhanced_data)
+            
+            if still_blurry:
+                # 5. Final Rejection
+                 raise ValueError("Image is too blurry and could not be clarified. Please upload a clearer image.")
+            
+            print("[VALIDATION] Enhancement successful.")
+            final_image_data = enhanced_data
+        
+        # --- VALIDATION PASSED ---
+
         # Check premium limits
         can_create, error_msg = await self.premium_service.check_report_limit(user_id)
         if not can_create:
@@ -66,14 +103,6 @@ class ReportService:
 
         report_id = str(uuid.uuid4())
         file_path = f"{user_id}/{report_id}.png"
-
-        # Upload image to Supabase Storage (SERVICE ROLE SAFE INTERNALLY)
-        upload_to_supabase_storage(
-            bucket=settings.STORAGE_BUCKET,
-            path=file_path,
-            file_bytes=image_data,
-            content_type="image/png",
-        )
 
         # Create report DB record (RLS ENFORCED)
         report_data = {
@@ -93,17 +122,133 @@ class ReportService:
         if not response.data:
             raise RuntimeError("Failed to insert report record")
 
-        # Background processing
+        # Background processing with FINAL validated image
         if background_tasks:
             background_tasks.add_task(
                 self._process_report,
                 report_id,
                 user_id,
-                image_data,
+                final_image_data,
             )
         else:
-            await self._process_report(report_id, user_id, image_data)
+            await self._process_report(report_id, user_id, final_image_data)
 
+        return report_id
+
+    async def create_report_with_data(
+        self,
+        user_id: str,
+        image_data: bytes,
+        filename: str,
+        extracted_data: Dict[str, Any],
+        report_type: Optional[str] = None,
+    ) -> str:
+        """
+        Create a report with pre-extracted data (e.g. from Gemini).
+        Bypasses internal OCR pipeline but still runs safety/flagging logic.
+        """
+        # Check premium limits
+        can_create, error_msg = await self.premium_service.check_report_limit(user_id)
+        if not can_create:
+            raise ValueError(error_msg)
+
+        report_id = str(uuid.uuid4())
+        file_path = f"{user_id}/{report_id}.png"
+
+        # Upload image moved to background (handled if background task handles it, or if we need to force it here for data flow?)
+        # For 'create_report_with_data', it's usually synchronous in existing flow (from upload endpoint), 
+        # BUT since we reverted the route to use 'create_report', this method might be unused for the main flow now.
+        # However, to be safe and consistent, we'll keep it synchronous here if this method is intended for direct/blocking usage, 
+        # OR better: if this method is used by the reverted route, it's NOT used. 
+        # The reverted route calls `create_report` which queues `_process_report`.
+        # `create_report_with_data` was for the synchronous route version.
+        # So touching this might be irrelevant but let's leave it as is or comment it out to avoid confusion if called properly.
+        # Actually, let's keep it sync here as it implies "I have data, just save it". 
+        # But wait, the route was reverted to call `create_report`.
+        # So we focus on `create_report`.
+        
+        # NOTE: Leaving this sync for now as it's not the main path.
+        upload_to_supabase_storage(
+            bucket=settings.STORAGE_BUCKET,
+            path=file_path,
+            file_bytes=image_data,
+            content_type="image/png",
+        )
+
+        # Parse Gemini Date & Type
+        parsed_type = extracted_data.get("report_type", report_type or "Unknown")
+        parsed_lab = extracted_data.get("lab_name")
+        parsed_date = extracted_data.get("date")
+
+        # Create report DB record
+        report_record = {
+            "id": report_id,
+            "user_id": user_id,
+            "type": parsed_type,
+            "lab_name": parsed_lab,
+            "date": parsed_date,
+            "status": "completed", # Data is ready immediately
+            "flag_level": "green", # Will update after param calc
+            "image_url": file_path,
+            "uploaded_to_abdm": False,
+            "progress": 100,
+            "created_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat(),
+        }
+
+        self.db.table("reports").insert(report_record).execute()
+
+        # Process Parameters
+        parameters = []
+        param_records = []
+        
+        for param in extracted_data.get("parameters", []):
+            try:
+                # Handle "120 mg/dL" vs "120"
+                val_str = str(param.get("value", ""))
+                numeric_part = ''.join(c for c in val_str if c.isdigit() or c == '.')
+                value_float = float(numeric_part) if numeric_part else 0.0
+            except:
+                value_float = 0.0
+
+            # Safety Service Flagging (Keep our own safety logic or trust Gemini? Trusting Gemini for now but verifying format)
+            # Check if Gemini already gave a flag
+            gemini_flag = param.get("flag", "normal").lower()
+            if gemini_flag not in ["high", "low", "normal"]:
+                gemini_flag = "normal"
+
+            param_id = str(uuid.uuid4())
+            param_record = {
+                "id": param_id,
+                "report_id": report_id,
+                "name": param.get("name", "Unknown"),
+                "value": str(param.get("value", "")),
+                "unit": param.get("unit"),
+                "normal_range": param.get("normal_range", ""),
+                "flag": gemini_flag,
+                "created_at": datetime.utcnow().isoformat(),
+            }
+            
+            param_records.append(param_record)
+            parameters.append(param_record)
+
+        if param_records:
+            self.storage_client.table("report_parameters").insert(param_records).execute()
+
+        # Update Report Flag Level based on parameters
+        overall_flag = self.safety_service.get_flag_level(parameters)
+        self.db.table("reports").update({"flag_level": overall_flag}).eq("id", report_id).execute()
+
+        # Generate Synthesis immediately if possible or background it
+        # Since user wants simplified explanation, we can use Gemini summary if provided
+        # or trigger the synthesis service.
+        summary = extracted_data.get("summary")
+        if summary:
+            # We can save this summary as a synthesis directly?
+            # Or just let the synthesis service run. Let's background the full synthesis for depth.
+            pass
+            
+        print(f"[SUCCESS] Created report {report_id} from Gemini data")
         return report_id
 
     async def _process_report(
@@ -113,130 +258,114 @@ class ReportService:
         image_data: bytes,
     ):
         try:
-            # 10% - Starting OCR
+            # 0% - Uploading to Storage (Background)
+            file_path = f"{user_id}/{report_id}.png"
+            # Use to_thread to prevent blocking the event loop even in background
+            await asyncio.to_thread(
+                upload_to_supabase_storage,
+                bucket=settings.STORAGE_BUCKET,
+                path=file_path,
+                file_bytes=image_data,
+                content_type="image/png",
+            )
+
+            # 10% - Starting Analysis
             await self._update_progress(report_id, 10)
             
-            # OCR
-            text = await self.ocr_service.extract_text(image_data)
-            print(f"[DEBUG] OCR text (first 500 chars): {text[:500]}")
+            # Using Gemini for authentic analysis
+            from app.services.gemini_service import GeminiService
+            gemini_service = GeminiService()
+            
+            # 30% - Sending to Gemini
+            await self._update_progress(report_id, 30)
+            
+            extracted_data = gemini_service.analyze_medical_report(image_data)
+            
+            # 70% - Analysis Complete, Saving Data
+            await self._update_progress(report_id, 70)
 
-            # 40% - OCR Complete, Starting Parsing
-            await self._update_progress(report_id, 40)
+            print(f"[DEBUG] Gemini Extracted Data: {extracted_data}")
 
-            parsed_data = self.ocr_service.parse_structured_data(text)
-            print(f"[DEBUG] Parsed {len(parsed_data.get('parameters', []))} parameters")
+            # Safe Date Parsing
+            raw_date = extracted_data.get("date")
+            parsed_date = None
+            if raw_date:
+                try:
+                    from dateutil import parser
+                    # Fuzzy match to handle "02 Dec, 2X" if possible, or just fail safely
+                    # If it contains ambiguous chars, parser might still fail or return weird stuff.
+                    # Let's try basic parsing
+                    parsed_date = parser.parse(raw_date, fuzzy=True).date().isoformat()
+                except Exception:
+                    print(f"[WARNING] Could not parse date: {raw_date}. Saving as None.")
+                    parsed_date = None
 
             # Update basic report info
             self.db.table("reports").update(
                 {
-                    "type": parsed_data.get("report_type", "Unknown"),
-                    "lab_name": parsed_data.get("lab_name"),
-                    "date": parsed_data.get("date"),
+                    "type": extracted_data.get("report_type", "Unknown"),
+                    "lab_name": extracted_data.get("lab_name"),
+                    "date": parsed_date,
                     "updated_at": datetime.utcnow().isoformat(),
                 }
             ).eq("id", report_id).execute()
 
+            # Process Parameters & Explanations
             parameters = []
-            is_premium = await self.premium_service.check_subscription(user_id)
-            
-            # 50% - Parsed, Preparing for AI
-            await self._update_progress(report_id, 50)
-            
-            # 1. First pass: Create and insert all parameter records
             param_records = []
-            param_data_list = [] # For AI prompt
+            explanation_records = []
             
-            for param_data in parsed_data.get("parameters", []):
+            for param in extracted_data.get("parameters", []):
                 try:
-                    value_float = float(param_data.get("value", "0").replace(",", ""))
-                except Exception:
+                    val_str = str(param.get("value", ""))
+                    numeric_part = ''.join(c for c in val_str if c.isdigit() or c == '.')
+                    value_float = float(numeric_part) if numeric_part else 0.0
+                except:
                     value_float = 0.0
 
-                flag = self.safety_service.classify_flag(
-                    parameter_name=param_data.get("name", ""),
-                    value=value_float,
-                    normal_range=param_data.get("range", ""),
-                    unit=param_data.get("unit"),
-                )
+                gemini_flag = param.get("flag", "normal").lower()
+                if gemini_flag not in ["high", "low", "normal"]:
+                    gemini_flag = "normal"
 
                 param_id = str(uuid.uuid4())
                 param_record = {
                     "id": param_id,
                     "report_id": report_id,
-                    "name": param_data.get("name", ""),
-                    "value": param_data.get("value", ""),
-                    "unit": param_data.get("unit"),
-                    "normal_range": param_data.get("range", ""),
-                    "flag": flag,
+                    "name": param.get("name", "Unknown"),
+                    "value": str(param.get("value", "")),
+                    "unit": param.get("unit"),
+                    "normal_range": param.get("normal_range", ""),
+                    "flag": gemini_flag,
                     "created_at": datetime.utcnow().isoformat(),
                 }
                 
-                # Add to lists
                 param_records.append(param_record)
-                parameters.append({**param_record, "flag": flag})
+                parameters.append(param_record)
                 
-                # Prepare data for AI (must match what AI expects)
-                param_data_list.append({
-                    "name": param_data.get("name", ""),
-                    "value": param_data.get("value", ""),
-                    "range": param_data.get("range", ""),
-                    "flag": flag,
-                    "unit": param_data.get("unit")
-                })
+                # Save Explanation if provided
+                explanation_text = param.get("explanation")
+                if explanation_text:
+                    explanation_records.append({
+                        "id": str(uuid.uuid4()),
+                        "parameter_id": param_id,
+                        "what": param.get("name", "Test Parameter"),
+                        "meaning": explanation_text,
+                        "causes": [], # Gemini summary usually doesn't give structured causes list unless asked
+                        "next_steps": ["Consult your doctor."],
+                        "generated_at": datetime.utcnow().isoformat(),
+                    })
 
-            # Batch Insert Parameters
+            # Batch Insert
             if param_records:
                 self.storage_client.table("report_parameters").insert(param_records).execute()
             
-            # 60% - Parameters Saved, Calling AI
-            await self._update_progress(report_id, 60)
-
-            # 2. Call AI: Single Batch Request
-            print(f"[DEBUG] Generating batched explanations for {len(param_data_list)} parameters...")
-            explanations = await self.explanation_service.generate_report_explanations(
-                parameters=param_data_list,
-                is_premium=is_premium
-            )
-            
-            # 80% - AI Explanations Generated
-            await self._update_progress(report_id, 80)
-            
-            # 3. Process results and batch insert explanations
-            # Map parameters by name to associate IDs
-            param_map = {p["name"].lower().strip(): p["id"] for p in param_records}
-            
-            explanation_records = []
-            for exp in explanations:
-                # Find matching parameter ID
-                p_name = exp.get("name", "").lower().strip()
-                if not p_name or p_name not in param_map:
-                    # Try fuzzy match or fallback? 
-                    # For now skip if no match to avoid bad data
-                    continue
-                    
-                param_id = param_map[p_name]
-                
-                explanation_record = {
-                    "id": str(uuid.uuid4()),
-                    "parameter_id": param_id,
-                    "what": exp.get("what", ""),
-                    "meaning": exp.get("meaning", ""),
-                    "causes": exp.get("causes", []),
-                    "next_steps": exp.get("next_steps", []),
-                    "generated_at": datetime.utcnow().isoformat(),
-                }
-                explanation_records.append(explanation_record)
-
             if explanation_records:
-                print(f"[DEBUG] Inserting {len(explanation_records)} explanations")
                 self.storage_client.table("report_explanations").insert(explanation_records).execute()
             
-            flag_level = (
-                self.safety_service.get_flag_level(parameters)
-                if parameters
-                else "green"
-            )
+            # Determine overall flag
+            flag_level = self.safety_service.get_flag_level(parameters) if parameters else "green"
 
+            # 100% - Complete
             self.db.table("reports").update(
                 {
                     "status": "completed",
@@ -246,14 +375,13 @@ class ReportService:
                 }
             ).eq("id", report_id).execute()
 
-            print(f"[SUCCESS] Report {report_id} processed")
+            print(f"[SUCCESS] Report {report_id} processed with Gemini")
             
-            # Trigger Background Synthesis (Fire and forget from user perspective, but awaited here in bg task)
+            # Trigger Background Synthesis (Optional, if we want detailed summary beyond what extraction gave)
             await self.generate_and_cache_synthesis(report_id, user_id)
 
         except Exception as e:
             print(f"[ERROR] Processing failed for {report_id}: {e}")
-            # Try to save error to reports table
             try:
                 self.db.table("reports").update(
                     {

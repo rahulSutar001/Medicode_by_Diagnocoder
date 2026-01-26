@@ -3,21 +3,17 @@ AI service for generating medical test explanations
 Uses OpenAI with strict safety constraints
 """
 import json
-from typing import Dict, List, Optional
-from openai import OpenAI
+from typing import Dict, List
 from app.core.config import settings
-from app.ai.prompts import get_explanation_prompt, get_batch_explanation_prompt
+from app.ai.prompts import get_batch_explanation_prompt
 
 
 class ExplanationService:
     """Service for generating AI explanations of medical test results"""
     
     def __init__(self):
-        if not settings.OPENAI_API_KEY:
-            raise ValueError("OPENAI_API_KEY not configured")
-        
-        self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
-        self.model = settings.OPENAI_MODEL
+        from app.services.gemini_service import GeminiService
+        self.gemini = GeminiService()
     
     async def generate_report_explanations(
         self,
@@ -26,77 +22,67 @@ class ExplanationService:
     ) -> List[Dict]:
         """
         Generate AI explanations for ALL parameters in one batch call.
-        Strictly one OpenAI request per report.
+        Strictly one request per report.
         """
         if not parameters:
             return []
 
-        prompt = get_batch_explanation_prompt(parameters)
+        prompt_data = get_batch_explanation_prompt(parameters)
+
+        prompt = f"""
+        You are a medical explanations assistant.
+        Analyze the following medical test results and provide simple, educational explanations for each.
+        
+        INPUT DATA:
+        {prompt_data}
+        
+        RETURN ONLY A JSON ARRAY of objects, where each object has:
+        - "name": Test name
+        - "what": What this test measures
+        - "meaning": What the result means (for the patient)
+        - "causes": Possible causes (list of strings)
+        - "next_steps": Recommended general next steps (list of strings)
+        - "flag": The original flag (normal/high/low)
+        
+        Ensure the output is a valid JSON list.
+        """
 
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a medical explanations assistant. Return ONLY a JSON array."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                temperature=0.3,
-                # Increase tokens for potential large response
-                max_tokens=2000 if is_premium else 1000,
-                response_format={"type": "json_object"}
-            )
-
-            content = response.choices[0].message.content
+            # Call Gemini
+            data = self.gemini.generate_json(prompt)
             
-            # Parse JSON response
-            try:
-                # OpenAI often wraps array in an object key if force-json is used, or just returns the object
-                # We need to handle this robustly
-                data = json.loads(content)
+            explanations = []
+            if isinstance(data, list):
+                explanations = data
+            elif isinstance(data, dict):
+                # Try to find the list in values
+                for key, val in data.items():
+                    if isinstance(val, list):
+                        explanations = val
+                        break
+                    
+            # Validate and Sanitize each item
+            valid_explanations = []
+            for exp in explanations:
+                # Basic validation
+                if not isinstance(exp, dict): continue
                 
-                explanations = []
-                if isinstance(data, list):
-                    explanations = data
-                elif isinstance(data, dict):
-                    # Try to find the list in values
-                    # Common keys: "results", "explanations", "parameters"
-                    for key, val in data.items():
-                        if isinstance(val, list):
-                            explanations = val
-                            break
-                        
-                # Validate and Sanitize each item
-                valid_explanations = []
-                for exp in explanations:
-                    # Basic validation
-                    if not isinstance(exp, dict): continue
+                # Match by name if possible? 
+                # For now just sanitize what we got
+                flag = exp.get("flag", "normal")
+                sanitized = self._validate_explanation(exp, flag)
+                
+                # Ensure name exists for mapping back
+                if "name" in exp:
+                    sanitized["name"] = exp["name"]
                     
-                    # Match by name if possible? 
-                    # For now just sanitize what we got
-                    flag = exp.get("flag", "normal")
-                    sanitized = self._validate_explanation(exp, flag)
-                    
-                    # Ensure name exists for mapping back
-                    if "name" in exp:
-                        sanitized["name"] = exp["name"]
-                        
-                    valid_explanations.append(sanitized)
-                    
-                return valid_explanations
-
-            except json.JSONDecodeError:
-                print(f"[ERROR] Batch AI response not valid JSON: {content[:100]}")
-                return [] # Graceful degradation
+                valid_explanations.append(sanitized)
+                
+            return valid_explanations
 
         except Exception as e:
             print(f"[ERROR] Batch AI explanation failed: {e}")
-            return [] # Graceful degradation: Report completes without explanations
+            return [] # Graceful degradation
 
     async def generate_explanation(
         self,

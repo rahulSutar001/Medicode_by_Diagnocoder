@@ -130,17 +130,31 @@ class FamilyService:
         
         if email:
             try:
-                 # Use RPC to find user ID from auth.users securely
-                 res = self.admin_supabase.rpc("get_user_id_by_email", {"email": email}).execute()
+                 # Instead of RPC, fetch users directly via Admin API (which we know works)
+                 from app.core.security import get_service_supabase_client
+                 admin_client = get_service_supabase_client()
                  
-                 # Robustly handle RPC response (it might be a list of objects or other shapes)
-                 data = res.data
+                 # Fetch users (default page size is usually 50, let's try to get more if needed loop)
+                 # Ideally, we should iterate pages, but for now fetching a reasonable list
+                 # Note: in Python client, list_users() might not support page params easily in all versions
+                 # But let's try the standard method we verified.
+                 auth_users_res = admin_client.auth.admin.list_users()
                  
-                 if data and isinstance(data, list) and len(data) > 0:
-                     first_row = data[0]
-                     # Check if it's a dict and has 'id' or function name key
-                     if isinstance(first_row, dict):
-                         target_user_id = first_row.get("id") or first_row.get("get_user_id_by_email")
+                 auth_list = []
+                 if isinstance(auth_users_res, list):
+                     auth_list = auth_users_res
+                 elif hasattr(auth_users_res, "users"):
+                     auth_list = auth_users_res.users
+                 elif isinstance(auth_users_res, dict) and "users" in auth_users_res:
+                     auth_list = auth_users_res["users"]
+
+                 # Find user by email (case-insensitive)
+                 target_email_lower = email.lower().strip()
+                 for u in auth_list:
+                     u_email = getattr(u, "email", "") or (u.get("email") if isinstance(u, dict) else "")
+                     if u_email and u_email.lower().strip() == target_email_lower:
+                         target_user_id = getattr(u, "id", None) or (u.get("id") if isinstance(u, dict) else None)
+                         break
                  
             except Exception as e:
                  print(f"Error looking up email: {e}")

@@ -7,7 +7,7 @@ from fastapi import FastAPI, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.core.config import settings
-from app.api.routes import reports, chat, family, premium, chatbot
+from app.api.routes import reports, chat, family, premium, chatbot, admin
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -41,6 +41,7 @@ app.include_router(chat.router, prefix=settings.API_V1_PREFIX)
 app.include_router(family.router, prefix=settings.API_V1_PREFIX)
 app.include_router(premium.router, prefix=settings.API_V1_PREFIX)
 app.include_router(chatbot.router, prefix=settings.API_V1_PREFIX)
+app.include_router(admin.router, prefix=settings.API_V1_PREFIX)
 
 from pydantic import BaseModel
 class TokenCheck(BaseModel):
