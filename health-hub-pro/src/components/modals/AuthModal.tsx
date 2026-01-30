@@ -8,14 +8,16 @@ import { toast } from 'sonner';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 
 export function AuthModal() {
-  const { 
-    showAuthModal, 
-    setShowAuthModal, 
-    authMode, 
+  const {
+    showAuthModal,
+    setShowAuthModal,
+    authMode,
     setCurrentScreen,
-    setIsLoggedIn 
+    setActiveTab,
+    setIsLoggedIn,
+    fetchUserProfile
   } = useApp();
-  
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -102,9 +104,9 @@ export function AuthModal() {
         setPendingPassword(password); // Store password to set after OTP verification
         setOtpType('magiclink');
         setShowOTPInput(true);
-          toast.info('Check your email', {
-            description: 'We sent you an 8-digit OTP code. Please enter it below.',
-          });
+        toast.info('Check your email', {
+          description: 'We sent you an 8-digit OTP code. Please enter it below.',
+        });
         setIsLoading(false);
       } else {
         // Sign in existing user
@@ -112,7 +114,7 @@ export function AuthModal() {
 
         if (signInError) {
           // Check if error is due to unconfirmed email
-          const isEmailNotConfirmed = 
+          const isEmailNotConfirmed =
             signInError.message?.toLowerCase().includes('email not confirmed') ||
             signInError.message?.toLowerCase().includes('email_not_confirmed') ||
             signInError.message?.toLowerCase().includes('confirm your email');
@@ -140,12 +142,16 @@ export function AuthModal() {
         }
 
         if (user && session) {
+          // Fetch profile before transitioning
+          await fetchUserProfile(user);
+
           toast.success('Welcome back!', {
             description: 'Successfully logged in',
           });
           setShowAuthModal(false);
           setIsLoggedIn(true);
           setCurrentScreen('home');
+          setActiveTab('home');
         }
       }
     } catch (err) {
@@ -201,7 +207,7 @@ export function AuthModal() {
 
     try {
       const { error: resendError } = await resendOTP(emailToUse, otpType);
-      
+
       if (resendError) {
         setError(resendError.message || 'Failed to resend OTP');
         toast.error('Failed to resend OTP', {
@@ -258,6 +264,9 @@ export function AuthModal() {
           }
         }
 
+        // Fetch profile before transitioning (might be empty/new)
+        await fetchUserProfile(user);
+
         toast.success('Email verified successfully!', {
           description: 'Welcome to MediGuide',
         });
@@ -280,15 +289,15 @@ export function AuthModal() {
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center">
       {/* Overlay */}
-      <div 
+      <div
         className="absolute inset-0 bg-foreground/40 backdrop-blur-sm"
         onClick={handleClose}
       />
-      
+
       {/* Modal */}
-      <div className="relative w-[320px] bg-card rounded-2xl shadow-elevated p-6 animate-scale-in">
+      <div className="relative w-full max-w-sm mx-4 bg-card rounded-2xl shadow-elevated p-6 animate-scale-in">
         {/* Close Button */}
-        <button 
+        <button
           onClick={handleClose}
           className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center text-text-secondary hover:text-foreground transition-colors"
         >
@@ -322,7 +331,7 @@ export function AuthModal() {
             <p className="text-body text-text-secondary text-center mb-4">
               We sent an 8-digit code to <span className="font-medium text-foreground">{pendingEmail}</span>
             </p>
-            
+
             <div className="flex justify-center">
               <InputOTP
                 maxLength={8}
@@ -351,7 +360,7 @@ export function AuthModal() {
             </div>
 
             <div className="mt-6 space-y-3">
-              <Button 
+              <Button
                 className="w-full"
                 onClick={handleVerifyOTP}
                 disabled={isLoading || otp.length !== 8}
@@ -365,7 +374,7 @@ export function AuthModal() {
                   'Verify Email'
                 )}
               </Button>
-              <Button 
+              <Button
                 variant="ghost"
                 className="w-full"
                 onClick={() => {
@@ -384,76 +393,76 @@ export function AuthModal() {
         ) : (
           /* Regular Form */
           <div className="space-y-4">
-          <Input
-            type="email"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            onKeyPress={handleKeyPress}
-            disabled={isLoading}
-            className={error && !email ? 'border-destructive' : ''}
-          />
-          
-          <div className="relative">
             <Input
-              type={showPassword ? 'text' : 'password'}
-              placeholder="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               onKeyPress={handleKeyPress}
               disabled={isLoading}
-              className={error && !password ? 'border-destructive' : ''}
+              className={error && !email ? 'border-destructive' : ''}
             />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              disabled={isLoading}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-secondary disabled:opacity-50"
-            >
-              {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-            </button>
-          </div>
 
-          {authMode === 'signup' && (
             <div className="relative">
               <Input
                 type={showPassword ? 'text' : 'password'}
-                placeholder="Confirm Password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 onKeyPress={handleKeyPress}
                 disabled={isLoading}
-                className={error && password !== confirmPassword ? 'border-destructive' : ''}
+                className={error && !password ? 'border-destructive' : ''}
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                disabled={isLoading}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-secondary disabled:opacity-50"
+              >
+                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+              </button>
             </div>
-          )}
-          
-          {/* Buttons */}
-          <div className="mt-6 space-y-3">
-            <Button 
-              className="w-full"
-              onClick={handleSubmit}
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  {authMode === 'login' ? 'Signing in...' : 'Creating account...'}
-                </>
-              ) : (
-                authMode === 'login' ? 'Log In' : 'Sign Up'
-              )}
-            </Button>
-            <Button 
-              variant="ghost"
-              className="w-full"
-              onClick={handleClose}
-              disabled={isLoading}
-            >
-              Cancel
-            </Button>
+
+            {authMode === 'signup' && (
+              <div className="relative">
+                <Input
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Confirm Password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  disabled={isLoading}
+                  className={error && password !== confirmPassword ? 'border-destructive' : ''}
+                />
+              </div>
+            )}
+
+            {/* Buttons */}
+            <div className="mt-6 space-y-3">
+              <Button
+                className="w-full"
+                onClick={handleSubmit}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    {authMode === 'login' ? 'Signing in...' : 'Creating account...'}
+                  </>
+                ) : (
+                  authMode === 'login' ? 'Log In' : 'Sign Up'
+                )}
+              </Button>
+              <Button
+                variant="ghost"
+                className="w-full"
+                onClick={handleClose}
+                disabled={isLoading}
+              >
+                Cancel
+              </Button>
+            </div>
           </div>
-        </div>
         )}
       </div>
     </div>

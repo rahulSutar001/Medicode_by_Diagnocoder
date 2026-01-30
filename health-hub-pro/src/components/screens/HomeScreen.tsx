@@ -38,7 +38,7 @@ export function HomeScreen() {
         <div className="flex justify-between items-start">
           <div>
             <h1 className="text-subtitle text-foreground font-semibold">
-              {getGreeting()}, {user?.firstName || 'User'}!
+              {getGreeting()}{user?.firstName ? `, ${user.firstName}` : ''}!
             </h1>
             <p className="text-body text-text-secondary mt-1">{formatDate()}</p>
           </div>

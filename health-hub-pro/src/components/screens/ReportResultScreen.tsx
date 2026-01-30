@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '@/contexts/AppContext';
-import { ArrowLeft, MessageCircle, Share2, ChevronDown, ChevronUp, Check, AlertTriangle, AlertCircle, FileText } from 'lucide-react';
+import { ArrowLeft, MessageCircle, Share2, ChevronDown, ChevronUp, Check, AlertTriangle, AlertCircle, FileText, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn, getStorageUrl } from '@/lib/utils';
 import { getReport, getReportParameters } from '@/lib/api';
 import { toast } from 'sonner';
@@ -344,11 +345,47 @@ export function ReportResultScreen() {
 
       {/* Fixed Bottom Bar */}
       <div className="absolute bottom-0 left-0 right-0 px-5 py-4 bg-card border-t border-border flex items-center gap-3">
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button size="default" className="flex-1">
+              Save to ABDM
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[340px] p-0 border-0 bg-transparent shadow-none" side="top" align="center" sideOffset={10}>
+            <div className="flex items-start gap-4 bg-[#1e293b] p-4 rounded-xl border border-slate-700/50 shadow-2xl relative overflow-hidden">
+              {/* Accent Line */}
+              <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500" />
 
-        <Button size="default" className="flex-1">
-          Save to ABDM
-        </Button>
-        <Button variant="secondary" size="default" className="flex-1">
+              <Info className="w-5 h-5 text-blue-400 shrink-0 mt-0.5 ml-2" />
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-slate-200 leading-none">This feature will be available shortly.</p>
+                <p className="text-xs text-slate-400 font-normal leading-relaxed">Secure health record integration in progress.</p>
+              </div>
+            </div>
+          </PopoverContent>
+        </Popover>
+        <Button
+          variant="secondary"
+          size="default"
+          className="flex-1"
+          onClick={() => {
+            const shareData = {
+              title: `Lab Report: ${report?.type || 'Medical Report'}`,
+              text: `Here is my medical report from ${report?.lab_name || 'Lab'} dated ${new Date(report?.date || report?.created_at).toLocaleDateString()}.`,
+              url: window.location.href, // Or the specific report URL if available
+            };
+
+            if (navigator.share) {
+              navigator.share(shareData).catch((err) => console.log('Error sharing:', err));
+            } else {
+              // Fallback: Show options toast or simple alert for now, effectively "Share via Email"
+              const subject = encodeURIComponent(shareData.title);
+              const body = encodeURIComponent(`${shareData.text}\n\n${shareData.url}`);
+              window.open(`mailto:?subject=${subject}&body=${body}`);
+              toast.info('Opening email client to share...');
+            }
+          }}
+        >
           <Share2 className="w-5 h-5 mr-2" />
           Share
         </Button>

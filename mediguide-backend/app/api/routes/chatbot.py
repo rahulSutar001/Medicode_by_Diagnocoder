@@ -52,7 +52,8 @@ async def ask_chatbot(
         question=payload.question,
         report_data=report,
         parameters=parameters,
-        explanations=explanations
+        explanations=explanations,
+        report_id=payload.report_id
     )
     
     return ChatResponse(response=answer)

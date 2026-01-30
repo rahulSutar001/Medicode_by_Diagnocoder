@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { getSession, onAuthStateChange, getCurrentUser } from '@/lib/auth';
+import { supabase } from '@/lib/supabase';
 import type { Session } from '@supabase/supabase-js';
 import { FamilyMember } from '@/lib/api';
 
@@ -38,6 +39,7 @@ interface User {
     relationship: string;
     phone: string;
   };
+  profileImage: string | null;
 }
 
 interface Report {
@@ -82,6 +84,7 @@ interface AppContextType {
   setCurrentReportId: (id: string | null) => void;
   viewingMember: FamilyMember | null;
   setViewingMember: (member: FamilyMember | null) => void;
+  fetchUserProfile: (authUser: any) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -115,6 +118,56 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [viewingMember, setViewingMember] = useState<FamilyMember | null>(null);
 
   /**
+   * Fetches the user profile from Supabase and syncs it to the app state
+   */
+  const fetchUserProfile = async (authUser: any) => {
+    try {
+      if (!authUser) return;
+
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', authUser.id)
+        .single();
+
+      if (profileError) {
+        console.log('No profile found or error fetching profile:', profileError);
+        return;
+      }
+
+      if (profileData) {
+        const fullName = (profileData.full_name as string) ?? '';
+        const nameParts = fullName.split(' ');
+        const firstName = nameParts[0] ?? '';
+        const lastName = nameParts.slice(1).join(' ') ?? '';
+
+        const syncedUserData: User = {
+          firstName,
+          lastName,
+          email: authUser.email ?? '',
+          dateOfBirth: (profileData.dob as string) ?? '',
+          phoneNumber: (profileData.phone_number as string) ?? '',
+          gender: (profileData.gender as string) ?? '',
+          bloodGroup: (profileData.blood_group as string) ?? '',
+          allergies: (profileData.allergies as string) ?? '',
+          conditions: (profileData.health_conditions as string) ?? '',
+          emergencyContact: {
+            name: (profileData.em_contact_name as string) ?? '',
+            relationship: (profileData.em_relationship as string) ?? '',
+            phone: (profileData.em_phone as string) ?? '',
+          },
+          profileImage: (profileData.profile_image_url as string) ?? null,
+        };
+
+        setUser(syncedUserData);
+        setHasCompletedProfile(true);
+      }
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+    }
+  };
+
+  /**
    * Initialize authentication state on app load
    * Checks for existing session and updates app state accordingly
    */
@@ -126,10 +179,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
         if (session && supabaseUser) {
           setIsLoggedIn(true);
-          // Map Supabase user to app user format if needed
-          // For now, we'll just set logged in state
-          // Navigate to home if user is authenticated
-          setCurrentScreen('home');
+          // Fetch and sync profile data immediately
+          await fetchUserProfile(supabaseUser);
+
+          // Restore previous state if available
+          const savedScreen = localStorage.getItem('mediguide_current_screen') as Screen | null;
+          const savedTab = localStorage.getItem('mediguide_active_tab') as Tab | null;
+
+          if (savedScreen && savedScreen !== 'splash' && savedScreen !== 'onboarding' && savedScreen !== 'login' && savedScreen !== 'signup') {
+            setCurrentScreen(savedScreen);
+            if (savedTab) {
+              setActiveTab(savedTab);
+            }
+          } else {
+            setCurrentScreen('home');
+          }
         } else {
           setIsLoggedIn(false);
           setCurrentScreen('onboarding');
@@ -154,12 +218,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setIsLoggedIn(true);
         const supabaseUser = await getCurrentUser();
         if (supabaseUser) {
-          setCurrentScreen('home');
+          // Fetch profile immediately on sign in
+          await fetchUserProfile(supabaseUser);
+          // Check for saved state on sign in as well
+          const savedScreen = localStorage.getItem('mediguide_current_screen') as Screen | null;
+          const savedTab = localStorage.getItem('mediguide_active_tab') as Tab | null;
+
+          if (savedScreen && savedScreen !== 'splash' && savedScreen !== 'onboarding' && savedScreen !== 'login' && savedScreen !== 'signup') {
+            setCurrentScreen(savedScreen);
+            if (savedTab) {
+              setActiveTab(savedTab);
+            }
+          } else {
+            setCurrentScreen('home');
+            setActiveTab('home');
+          }
         }
       } else if (event === 'SIGNED_OUT') {
         setIsLoggedIn(false);
         setUser(null);
         setCurrentScreen('onboarding');
+        setActiveTab('home'); // Reset tab state
+        // Clear saved state on logout
+        localStorage.removeItem('mediguide_current_screen');
+        localStorage.removeItem('mediguide_active_tab');
       } else if (event === 'TOKEN_REFRESHED' && session) {
         // Session refreshed, user still logged in
         setIsLoggedIn(true);
@@ -170,6 +252,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       subscription.unsubscribe();
     };
   }, []);
+
+  // Save state whenever it changes
+  useEffect(() => {
+    if (isLoggedIn && currentScreen !== 'splash' && currentScreen !== 'onboarding' && currentScreen !== 'login' && currentScreen !== 'signup') {
+      localStorage.setItem('mediguide_current_screen', currentScreen);
+    }
+    if (isLoggedIn && activeTab) {
+      localStorage.setItem('mediguide_active_tab', activeTab);
+    }
+  }, [currentScreen, activeTab, isLoggedIn]);
 
   return (
     <AppContext.Provider
@@ -204,6 +296,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setCurrentReportId,
         viewingMember,
         setViewingMember,
+        fetchUserProfile,
       }}
     >
       {isCheckingAuth ? null : children}

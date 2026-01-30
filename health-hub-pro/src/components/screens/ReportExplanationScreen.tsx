@@ -3,7 +3,7 @@ import { useApp } from '@/contexts/AppContext';
 import { ArrowLeft, Share2, Download, MessageCircle, AlertTriangle, Check, Brain, ChevronRight, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { getReport, getReportParameters } from '@/lib/api';
+import { getReport, getReportParameters, getReportSynthesis } from '@/lib/api';
 import { toast } from 'sonner';
 
 interface ExplanationItem {
@@ -25,23 +25,51 @@ export function ReportExplanationScreen() {
     const { setCurrentScreen, currentReportId, user } = useApp();
     const [report, setReport] = useState<any>(null);
     const [items, setItems] = useState<ExplanationItem[]>([]);
+    const [synthesis, setSynthesis] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+
+    // Filter metadata from standard items
+    const metadataParams = items.filter(i => i.name.startsWith('METADATA_'));
+    const displayItems = items.filter(i => !i.name.startsWith('METADATA_'));
+
+    const abnormalItems = displayItems.filter(i => i.flag !== 'normal');
+    const normalItems = displayItems.filter(i => i.flag === 'normal');
+
+    // Extract Metadata
+    const patientAge = metadataParams.find(i => i.name === 'METADATA_AGE')?.value;
+    const patientSex = metadataParams.find(i => i.name === 'METADATA_SEX')?.value;
+    const clinicalSummary = metadataParams.find(i => i.name === 'METADATA_CLINICAL_SUMMARY')?.value;
+    const overallIndication = metadataParams.find(i => i.name === 'METADATA_INDICATION')?.value;
+    const rawSystemSummaries = metadataParams.find(i => i.name === 'METADATA_SYSTEM_SUMMARIES')?.value;
+
+    let systemSummaries: any[] = [];
+    try {
+        if (rawSystemSummaries) systemSummaries = JSON.parse(rawSystemSummaries);
+    } catch (e) {
+        console.error("Failed to parse system summaries", e);
+    }
 
     const handleBack = () => {
         setCurrentScreen('report-result');
     };
 
     useEffect(() => {
-        const loadData = async () => {
-            if (!currentReportId) return;
+        const loadExplanation = async () => {
+            if (!currentReportId) {
+                console.error("No report ID found");
+                setLoading(false);
+                return;
+            }
             try {
                 setLoading(true);
-                const [reportData, paramsData] = await Promise.all([
+                const [reportData, paramsData, synthesisData] = await Promise.all([
                     getReport(currentReportId),
-                    getReportParameters(currentReportId)
+                    getReportParameters(currentReportId),
+                    getReportSynthesis(currentReportId)
                 ]);
                 setReport(reportData);
                 setItems(paramsData as any);
+                setSynthesis(synthesisData);
             } catch (err) {
                 console.error(err);
                 toast.error('Failed to load explanation');
@@ -49,11 +77,8 @@ export function ReportExplanationScreen() {
                 setLoading(false);
             }
         };
-        loadData();
+        loadExplanation();
     }, [currentReportId]);
-
-    const abnormalItems = items.filter(i => i.flag !== 'normal');
-    const normalItems = items.filter(i => i.flag === 'normal');
 
     if (loading) {
         return (
@@ -98,36 +123,66 @@ export function ReportExplanationScreen() {
                         </p>
                     </div>
 
-                    {/* 1. Report Overview */}
+                    {/* 1. Clinical Summary (New) */}
+                    <section className="space-y-4">
+                        <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                                <Brain className="w-5 h-5 text-primary" />
+                                <h2 className="text-subtitle font-bold text-foreground">Clinical Summary</h2>
+                            </div>
+                            {overallIndication && (
+                                <div className={cn(
+                                    "px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider",
+                                    overallIndication === 'Normal' ? "bg-success/10 text-success" :
+                                        overallIndication === 'Mildly Abnormal' ? "bg-warning/10 text-warning" : "bg-error/10 text-error"
+                                )}>
+                                    {overallIndication}
+                                </div>
+                            )}
+                        </div>
+                        <div className="card-elevated p-5 bg-primary/5 border-primary/10">
+                            <p className="text-body text-text-secondary leading-relaxed">
+                                {clinicalSummary || 'Analyzing your results to provide a comprehensive summary...'}
+                            </p>
+                        </div>
+                    </section>
+
+                    {/* 2. Report Overview */}
                     <section className="space-y-4">
                         <div className="flex items-center gap-2 mb-2">
                             <FileText className="w-5 h-5 text-primary" />
-                            <h2 className="text-subtitle font-bold text-foreground">Report Overview</h2>
+                            <h2 className="text-subtitle font-bold text-foreground">Report Details</h2>
                         </div>
                         <div className="card-elevated p-5 space-y-3">
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <p className="text-body-sm text-text-tertiary">Patient</p>
-                                    <p className="text-body font-medium text-foreground">{user?.firstName || 'User'} {user?.lastName || ''}</p>
+                                    <p className="text-body font-medium text-foreground">{report?.patient_name || 'Patient name not provided in lab report'}</p>
                                 </div>
                                 <div>
                                     <p className="text-body-sm text-text-tertiary">Age & Sex</p>
-                                    {/* Fallback as we don't have full metrics here yet */}
-                                    <p className="text-body font-medium text-foreground">{user?.gender || 'Unknown'}, {user?.dateOfBirth ? new Date().getFullYear() - new Date(user.dateOfBirth).getFullYear() : '--'} yrs</p>
+                                    <p className="text-body font-medium text-foreground">
+                                        {patientAge || patientSex ? (
+                                            <>
+                                                {patientAge && patientSex ? `${patientAge} / ${patientSex}` : (patientAge || patientSex)}
+                                            </>
+                                        ) : 'Not provided in lab report'}
+                                    </p>
                                 </div>
                                 <div className="col-span-2">
-                                    <p className="text-body-sm text-text-tertiary">Test</p>
+                                    <p className="text-body-sm text-text-tertiary">Test Type</p>
                                     <p className="text-body font-medium text-foreground">{report?.type || 'Unknown Test'}</p>
                                 </div>
                             </div>
                         </div>
                     </section>
 
-                    {/* 2. Explanation of Results */}
+
+                    {/* 3. Explanation of Results */}
                     <section className="space-y-6">
                         <div className="flex items-center gap-2">
                             <Brain className="w-5 h-5 text-primary" />
-                            <h2 className="text-subtitle font-bold text-foreground">Explanation of Your Results</h2>
+                            <h2 className="text-subtitle font-bold text-foreground">Findings & Interpretation</h2>
                         </div>
 
                         {/* Abnormal Values */}
@@ -155,15 +210,15 @@ export function ReportExplanationScreen() {
 
                                             <div className="space-y-3 mt-4 pt-4 border-t border-border/50">
                                                 <div>
-                                                    <p className="text-body-sm font-semibold text-foreground mb-1">What this value is:</p>
+                                                    <p className="text-body-sm font-semibold text-foreground mb-1">What this measures:</p>
                                                     <p className="text-body-sm text-text-secondary leading-relaxed">
                                                         {item.explanation?.what || 'A measure of specific biomarkers in your blood.'}
                                                     </p>
                                                 </div>
                                                 <div>
-                                                    <p className="text-body-sm font-semibold text-foreground mb-1">General Explanation:</p>
+                                                    <p className="text-body-sm font-semibold text-foreground mb-1">Simple Explanation:</p>
                                                     <p className="text-body-sm text-text-secondary leading-relaxed">
-                                                        {item.explanation?.meaning || 'This value is outside the standard reference range.'}
+                                                        {item.explanation?.meaning || 'This biomarker is outside the standard reference range.'}
                                                     </p>
                                                 </div>
                                             </div>
@@ -173,13 +228,33 @@ export function ReportExplanationScreen() {
                             </div>
                         )}
 
-                        {/* Normal Values */}
-                        {normalItems.length > 0 && (
-                            <div className="space-y-4">
-                                <h3 className="text-body-lg font-semibold text-foreground flex items-center gap-2">
-                                    <span className="w-2 h-2 rounded-full bg-success" />
-                                    Values Within Reference Range
-                                </h3>
+                        {/* Normal Values (Grouped) */}
+                        <div className="space-y-4">
+                            <h3 className="text-body-lg font-semibold text-foreground flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-success" />
+                                Values Within Reference Range
+                            </h3>
+
+                            {systemSummaries.length > 0 ? (
+                                <div className="space-y-4">
+                                    {systemSummaries.map((sys, idx) => (
+                                        <div key={idx} className="card-elevated p-5">
+                                            <div className="flex items-center justify-between mb-3 pb-3 border-b border-border/50">
+                                                <h4 className="text-body font-bold text-foreground">{sys.category}</h4>
+                                                <span className={cn(
+                                                    "px-2 py-0.5 rounded text-[10px] font-bold uppercase",
+                                                    sys.status === 'Normal' ? "bg-success/10 text-success" : "bg-warning/10 text-warning"
+                                                )}>
+                                                    {sys.status}
+                                                </span>
+                                            </div>
+                                            <p className="text-body-sm text-text-secondary leading-relaxed">
+                                                {sys.description}
+                                            </p>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
                                 <div className="card-elevated p-5">
                                     <p className="text-body text-text-secondary mb-3">
                                         All other components are within their standard reference ranges:
@@ -189,17 +264,17 @@ export function ReportExplanationScreen() {
                                             <li key={idx} className="text-body-sm text-text-secondary flex items-start gap-2">
                                                 <Check className="w-4 h-4 text-success shrink-0 mt-0.5" />
                                                 <span>
-                                                    <span className="font-medium text-foreground">{item.name}</span>: Within normal range ({item.range}).
+                                                    <span className="font-medium text-foreground">{item.name}</span>: Within normal range.
                                                 </span>
                                             </li>
                                         ))}
                                     </ul>
                                 </div>
-                            </div>
-                        )}
+                            )}
+                        </div>
                     </section>
 
-                    {/* 3. Suggested Questions */}
+                    {/* 4. Suggested Questions */}
                     <section className="space-y-4">
                         <div className="flex items-center gap-2">
                             <MessageCircle className="w-5 h-5 text-primary" />
@@ -208,22 +283,25 @@ export function ReportExplanationScreen() {
                         <div className="card-elevated p-5 bg-primary/5 border-primary/10">
                             <p className="text-body-sm text-text-secondary mb-4">To better understand your results, you could ask:</p>
                             <ul className="space-y-3">
-                                <li className="flex gap-3">
-                                    <span className="text-primary font-bold">"</span>
-                                    <p className="text-body text-foreground italic">What does this combination of results typically indicate?</p>
-                                </li>
-                                <li className="flex gap-3">
-                                    <span className="text-primary font-bold">"</span>
-                                    <p className="text-body text-foreground italic">Do I need any follow-up tests based on these findings?</p>
-                                </li>
-                                <li className="flex gap-3">
-                                    <span className="text-primary font-bold">"</span>
-                                    <p className="text-body text-foreground italic">Are there any lifestyle or dietary changes you recommend?</p>
-                                </li>
-                                <li className="flex gap-3">
-                                    <span className="text-primary font-bold">"</span>
-                                    <p className="text-body text-foreground italic">When should I repeat this test?</p>
-                                </li>
+                                {(synthesis?.suggested_questions && synthesis.suggested_questions.length > 0) ? (
+                                    synthesis.suggested_questions.map((q: string, i: number) => (
+                                        <li key={i} className="flex gap-3">
+                                            <span className="text-primary font-bold">"</span>
+                                            <p className="text-body text-foreground italic">{q}</p>
+                                        </li>
+                                    ))
+                                ) : (
+                                    <div className="flex flex-col gap-2">
+                                        <li className="flex gap-3">
+                                            <span className="text-primary font-bold">"</span>
+                                            <p className="text-body text-foreground italic">What does this combination of results typically indicate?</p>
+                                        </li>
+                                        <li className="flex gap-3">
+                                            <span className="text-primary font-bold">"</span>
+                                            <p className="text-body text-foreground italic">Do I need any follow-up tests based on these findings?</p>
+                                        </li>
+                                    </div>
+                                )}
                             </ul>
                         </div>
                     </section>
@@ -237,36 +315,23 @@ export function ReportExplanationScreen() {
                             <h2 className="text-subtitle font-bold text-foreground">General Wellness Recommendations</h2>
                         </div>
                         <div className="card-elevated p-5 space-y-4">
-                            <div>
-                                <h4 className="text-body font-semibold text-foreground mb-1">Nutrition</h4>
-                                <p className="text-body-sm text-text-secondary">Maintaining a balanced diet rich in whole foods supports overall health.</p>
-                            </div>
-                            <div>
-                                <h4 className="text-body font-semibold text-foreground mb-1">Hydration</h4>
-                                <p className="text-body-sm text-text-secondary">Drinking adequate water is important for all bodily functions and test accuracy.</p>
-                            </div>
-                            <div>
-                                <h4 className="text-body font-semibold text-foreground mb-1">Follow-up</h4>
-                                <p className="text-body-sm text-text-secondary">It is important to share this full report with your doctor for personalized advice.</p>
-                            </div>
+                            {(synthesis?.wellness_recommendations && synthesis.wellness_recommendations.length > 0) ? (
+                                synthesis.wellness_recommendations.map((rec: any, i: number) => (
+                                    <div key={i}>
+                                        <h4 className="text-body font-semibold text-foreground mb-1">{rec.title}</h4>
+                                        <p className="text-body-sm text-text-secondary">{rec.description}</p>
+                                    </div>
+                                ))
+                            ) : (
+                                <div>
+                                    <p className="text-body-sm text-text-secondary italic">Getting personalized lifestyle tips based on your results...</p>
+                                </div>
+                            )}
                         </div>
                     </section>
 
-                    {/* AI Promo */}
-                    <div className="bg-gradient-primary rounded-2xl p-6 text-white text-center">
-                        <Brain className="w-8 h-8 text-white/90 mx-auto mb-3" />
-                        <h3 className="text-subtitle font-bold mb-2">Need More Clarification?</h3>
-                        <p className="text-white/80 text-body-sm mb-4">
-                            ask our MediGuide AI Chatbot for instant help in plain English or 12+ Indian languages.
-                        </p>
-                        <Button
-                            variant="secondary"
-                            className="w-full bg-white text-primary hover:bg-white/90"
-                            onClick={() => setCurrentScreen('report-result')}
-                        >
-                            Ask AI Assistant
-                        </Button>
-                    </div>
+                    {/* AI Promo
+ */}
 
                     <div className="h-8" /> {/* Spacer */}
                 </div>

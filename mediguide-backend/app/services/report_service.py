@@ -300,15 +300,34 @@ class ReportService:
                     print(f"[WARNING] Could not parse date: {raw_date}. Saving as None.")
                     parsed_date = None
 
-            # Update basic report info
-            self.db.table("reports").update(
-                {
-                    "type": extracted_data.get("report_type", "Unknown"),
-                    "lab_name": extracted_data.get("lab_name"),
-                    "date": parsed_date,
-                    "updated_at": datetime.utcnow().isoformat(),
-                }
-            ).eq("id", report_id).execute()
+            # Update basic report info (REQUIRED COLUMNS)
+            try:
+                self.db.table("reports").update(
+                    {
+                        "type": extracted_data.get("report_type", "Unknown"),
+                        "lab_name": extracted_data.get("lab_name"),
+                        "date": parsed_date,
+                        "updated_at": datetime.utcnow().isoformat(),
+                    }
+                ).eq("id", report_id).execute()
+            except Exception as basic_e:
+                print(f"[ERROR] Failed to update basic report info: {basic_e}")
+                # Don't raise here, try to continue with parameters if possible
+
+            # Update patient details (OPTIONAL/NEW COLUMNS)
+            # We wrap this separately so if the columns haven't been added yet, it doesn't crash the whole process
+            try:
+                self.db.table("reports").update(
+                    {
+                        "patient_name": extracted_data.get("patient_name"),
+                        "patient_age": extracted_data.get("patient_age"),
+                        "patient_gender": extracted_data.get("patient_gender"),
+                    }
+                ).eq("id", report_id).execute()
+                print("[DEBUG] Patient details updated successfully.")
+            except Exception as schema_e:
+                print(f"[WARNING] Could not update patient details (Columns might be missing): {schema_e}")
+                print("Tip: Ensure you have run the migration in supabase/migrations/002_add_patient_details.sql")
 
             # Process Parameters & Explanations
             parameters = []

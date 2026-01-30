@@ -5,8 +5,8 @@ from typing import List, Dict, Optional
 from datetime import datetime
 import uuid
 from app.supabase.client import get_supabase
+from app.services.chatbot_service import ChatbotService
 from app.services.report_service import ReportService
-from app.ai.chatbot import ChatbotService
 
 
 class ChatService:

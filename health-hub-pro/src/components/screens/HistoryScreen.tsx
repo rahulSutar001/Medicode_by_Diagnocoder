@@ -1,3 +1,14 @@
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import React, { useState, useEffect } from 'react';
 import { useApp } from '@/contexts/AppContext';
 import { TabBar } from '@/components/TabBar';
@@ -17,9 +28,9 @@ export function HistoryScreen() {
 
   const [isDeleteMode, setIsDeleteMode] = useState(false);
   const [filters, setFilters] = useState({
-    type: 'ALL TYPES',
-    flag: 'FLAG LEVEL',
-    time: 'TIME',
+    type: 'All Types',
+    flag: 'All',
+    time: 'All Time',
   });
   const [openFilter, setOpenFilter] = useState<string | null>(null);
 
@@ -36,12 +47,14 @@ export function HistoryScreen() {
         const result = await listReports({
           page: 1,
           limit: 50,
-          report_type: filters.type !== 'ALL TYPES' ? filters.type : undefined,
-          flag_level: filters.flag !== 'FLAG LEVEL' ? filters.flag.toLowerCase() as 'green' | 'yellow' | 'red' : undefined,
+
+          report_type: filters.type !== 'All Types' ? filters.type : undefined,
+          flag_level: filters.flag !== 'All' ? filters.flag.toLowerCase() as 'green' | 'yellow' | 'red' : undefined,
           time_range: filters.time === 'All Time' ? 'all' :
             filters.time === 'Last 7 Days' ? '7d' :
               filters.time === 'Last Month' ? '30d' :
                 filters.time === 'Last 3 Months' ? '90d' : 'all',
+          status: 'completed',
           user_id: viewingMember?.user_id,
         });
 
@@ -101,13 +114,12 @@ export function HistoryScreen() {
     setShowMenu(false);
   };
 
-  const handleDelete = async () => {
+  const performDelete = async () => {
     if (viewingMember) {
       toast.error('Cannot delete shared reports');
       return;
     }
-    if (selectedReports.length === 0) return;
-    if (!confirm(`Are you sure you want to delete ${selectedReports.length} reports?`)) return;
+    // No need for confirm here, handled by AlertDialog
 
     try {
       setLoading(true);
@@ -123,6 +135,7 @@ export function HistoryScreen() {
     } catch (err) {
       console.error(err);
       toast.error('Failed to delete reports');
+    } finally {
       setLoading(false);
     }
   };
@@ -238,7 +251,7 @@ export function HistoryScreen() {
                     <button
                       key={option}
                       onClick={() => {
-                        setFilters({ ...filters, [key]: option.toUpperCase() });
+                        setFilters({ ...filters, [key]: option });
                         setOpenFilter(null);
                       }}
                       className="w-full px-3 py-2 text-left text-body-sm text-foreground hover:bg-muted transition-colors"
@@ -327,7 +340,7 @@ export function HistoryScreen() {
 
       {/* Delete FAB */}
       {isDeleteMode && (
-        <div className="fixed bottom-24 right-5 flex flex-col gap-2 items-end">
+        <div className="fixed bottom-24 right-5 flex flex-col gap-2 items-end z-50">
           {/* Cancel Button */}
           <button
             onClick={() => {
@@ -339,15 +352,31 @@ export function HistoryScreen() {
             Cancel
           </button>
 
-          <button
-            onClick={handleDelete}
-            className="px-5 py-3 rounded-full shadow-primary flex items-center gap-2 transition-all bg-destructive text-white"
-          >
-            <Trash2 className="w-5 h-5" />
-            <span className="text-body font-semibold">
-              Delete ({selectedReports.length})
-            </span>
-          </button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <button
+                disabled={selectedReports.length === 0}
+                className="px-5 py-3 rounded-full shadow-primary flex items-center gap-2 transition-all bg-destructive text-white disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Trash2 className="w-5 h-5" />
+                <span className="text-body font-semibold">
+                  Delete ({selectedReports.length})
+                </span>
+              </button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete Reports?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Are you sure you want to delete {selectedReports.length} reports? This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={performDelete} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       )}
 

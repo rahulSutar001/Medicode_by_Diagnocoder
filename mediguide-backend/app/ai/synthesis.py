@@ -61,12 +61,20 @@ class SynthesisService:
         1. Summarize the user's current health status based on this report.
         2. Identify key trends (e.g., "Hemoglobin has increased from 11.2 to 12.5").
         3. Write a "Doctor's Précis" - a concise, professional summary for a GP.
+        4. Provide 3-4 "Suggested Questions for Your Doctor" relevant to these specific results.
+        5. Provide 3-4 "Wellness Recommendations" (Nutrition, Hydration, Lifestyle) relevant to these results.
 
         RETURN STRICT JSON FORMAT:
         {{
             "status_summary": "1-2 sentences on current status",
             "key_trends": ["trend 1", "trend 2"],
-            "doctor_precis": "Paragraph for the doctor"
+            "doctor_precis": "Paragraph for the doctor",
+            "suggested_questions": ["question 1", "question 2"],
+            "wellness_tips": [
+                {{"title": "Nutrition", "content": "specific tip..."}},
+                {{"title": "Hydration", "content": "specific tip..."}},
+                {{"title": "Follow-up", "content": "specific tip..."}}
+            ]
         }}
         """
 
@@ -78,5 +86,10 @@ class SynthesisService:
             return {
                 "status_summary": "Could not generate synthesis.",
                 "key_trends": [],
-                "doctor_precis": "AI Synthesis unavailable."
+                "doctor_precis": "AI Synthesis unavailable.",
+                "wellness_tips": [
+                    {"title": "Nutrition", "content": "Maintain a balanced diet."},
+                    {"title": "Hydration", "content": "Stay well hydrated."},
+                    {"title": "Follow-up", "content": "Consult your doctor for next steps."}
+                ]
             }

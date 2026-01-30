@@ -17,6 +17,7 @@ import {
   LogOut
 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { signOut } from '@/lib/auth';
 import { toast } from 'sonner';
@@ -26,8 +27,9 @@ type SupabaseProfile = Record<string, unknown>;
 export function ProfileScreen() {
   const { user, setCurrentScreen, setIsLoggedIn, setUser } = useApp();
   const { theme, toggleTheme } = useTheme();
-  const [profile, setProfile] = useState<SupabaseProfile | null>(null);
-  const [loading, setLoading] = useState(true);
+
+  // Local loading state only for image upload feedback if needed, 
+  // but for main profile data we rely on user context
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -69,8 +71,10 @@ export function ProfileScreen() {
 
       if (updateError) throw updateError;
 
-      // 4. Update Local State
-      setProfile(prev => prev ? ({ ...prev, profile_image_url: publicUrl }) : null);
+      // 4. Update Global State
+      if (user) {
+        setUser({ ...user, profileImage: publicUrl });
+      }
       toast.success("Profile picture updated!");
 
     } catch (error: any) {
@@ -79,71 +83,7 @@ export function ProfileScreen() {
     }
   };
 
-  // Sync Supabase profile to AppContext on mount
-  useEffect(() => {
-    const syncProfileToContext = async () => {
-      const {
-        data: { user: authUser },
-        error: authError,
-      } = await supabase.auth.getUser();
-
-      console.log('USER:', authUser);
-      if (authError) {
-        console.error('getUser error:', authError);
-        setLoading(false);
-        return;
-      }
-
-      if (!authUser) {
-        setLoading(false);
-        return;
-      }
-
-      const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', authUser.id)
-        .single();
-
-      if (profileError) {
-        console.log('No profile found yet (first time user)');
-        setLoading(false);
-        return;
-      }
-
-      console.log('PROFILE DATA:', profileData);
-      setProfile(profileData);
-
-      // Sync profile data to AppContext
-      const fullName = (profileData.full_name as string) ?? '';
-      const nameParts = fullName.split(' ');
-      const firstName = nameParts[0] ?? '';
-      const lastName = nameParts.slice(1).join(' ') ?? '';
-
-      const syncedUserData = {
-        firstName,
-        lastName,
-        email: authUser.email ?? '',
-        dateOfBirth: (profileData.dob as string) ?? '',
-        phoneNumber: (profileData.phone_number as string) ?? '',
-        gender: (profileData.gender as string) ?? '',
-        bloodGroup: (profileData.blood_group as string) ?? '',
-        allergies: (profileData.allergies as string) ?? '',
-        conditions: (profileData.health_conditions as string) ?? '',
-        emergencyContact: {
-          name: (profileData.em_contact_name as string) ?? '',
-          relationship: (profileData.em_relationship as string) ?? '',
-          phone: (profileData.em_phone as string) ?? '',
-        },
-      };
-
-      console.log('PROFILE SYNCED TO CONTEXT:', syncedUserData);
-      setUser(syncedUserData);
-      setLoading(false);
-    };
-
-    syncProfileToContext();
-  }, [setUser]);
+  // No longer need to sync profile here as it's handled in AppContext
 
   /**
    * Handles user logout
@@ -169,20 +109,65 @@ export function ProfileScreen() {
     }
   };
 
+  /* Content for Info Sections */
+  const infoContent = {
+    about: {
+      title: "About MediGuide",
+      body: (
+        <div className="space-y-4">
+          <p className="text-body text-text-secondary">
+            MediGuide is a digital health assistant designed to help users understand, organize, and track their medical reports with clarity and confidence.
+          </p>
+          <p className="text-body text-text-secondary">
+            By combining smart report analysis with simple explanations, MediGuide makes health information easier to access, interpret, and share—empowering users to make informed decisions about their wellbeing.
+          </p>
+        </div>
+      )
+    },
+    privacy: {
+      title: "Privacy & Security",
+      body: (
+        <div className="space-y-4">
+          <p className="text-body text-text-secondary">
+            Your health data is private and protected. MediGuide follows strict security practices to ensure your medical information remains safe and confidential.
+          </p>
+          <p className="text-body text-text-secondary">
+            Reports and personal details are securely stored and shared only with your consent. We do not sell or misuse user data, and all access is governed by industry-standard privacy controls.
+          </p>
+        </div>
+      )
+    },
+    help: {
+      title: "Help & Support",
+      body: (
+        <div className="space-y-4">
+          <p className="text-body text-text-secondary">
+            Need assistance or have questions? We’re here to help.
+          </p>
+          <p className="text-body text-text-secondary">
+            Reach out for support with app usage, report understanding, or technical issues, and get timely guidance whenever you need it.
+          </p>
+        </div>
+      )
+    }
+  };
+
+  const [activeDialog, setActiveDialog] = useState<'about' | 'privacy' | 'help' | null>(null);
+
   const menuItems = [
     { icon: User, label: 'Edit Profile', onClick: () => setCurrentScreen('profile-setup') },
-    { icon: FileText, label: 'Health Reports', badge: '18', onClick: () => { } },
+    // Health Reports removed
     { icon: theme === 'dark' ? Sun : Moon, label: 'App Theme', isTheme: true, onClick: toggleTheme },
-    { icon: Shield, label: 'Privacy & Security', hasArrow: true, onClick: () => { } },
-    { icon: HelpCircle, label: 'Help & Support', hasArrow: true, onClick: () => { } },
-    { icon: Info, label: 'About', hasArrow: true, onClick: () => { } },
+    { icon: Shield, label: 'Privacy & Security', hasArrow: true, onClick: () => setActiveDialog('privacy') },
+    { icon: HelpCircle, label: 'Help & Support', hasArrow: true, onClick: () => setActiveDialog('help') },
+    { icon: Info, label: 'About', hasArrow: true, onClick: () => setActiveDialog('about') },
     { icon: LogOut, label: 'Log Out', onClick: handleLogout, isDestructive: true },
   ];
 
-  // Use Indian name as specified
+  // Fallback to empty if no user name
   const displayName = user?.firstName && user?.lastName
     ? `${user.firstName} ${user.lastName}`
-    : 'Kabir Sharma';
+    : '';
 
   return (
     <div className="absolute inset-0 bg-background-secondary overflow-hidden flex flex-col">
@@ -191,15 +176,15 @@ export function ProfileScreen() {
         {/* Profile Photo */}
         <div className="relative">
           <div className="w-20 h-20 rounded-full bg-gradient-primary flex items-center justify-center shadow-primary overflow-hidden">
-            {profile?.profile_image_url ? (
+            {user?.profileImage ? (
               <img
-                src={profile.profile_image_url as string}
+                src={user.profileImage}
                 alt="Profile"
                 className="w-full h-full object-cover"
               />
             ) : (
               <span className="text-3xl font-bold text-primary-foreground">
-                {user?.firstName?.[0] || 'K'}
+                {user?.firstName?.[0] || 'U'}
               </span>
             )}
           </div>
@@ -230,32 +215,36 @@ export function ProfileScreen() {
         <div className="card-medical p-5 mb-6 relative">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-section text-foreground">Medical ID</h2>
-            <button className="w-8 h-8 rounded-full bg-card flex items-center justify-center">
-              <Pencil className="w-4 h-4 text-primary" />
-            </button>
           </div>
           <div className="space-y-2">
             <div className="flex justify-between">
               <span className="text-body text-text-secondary">Mobile Number</span>
-              <span className="text-body font-medium text-foreground">{user?.phoneNumber || 'Not provided'}</span>
+              <span className="text-body font-medium text-foreground">{user?.phoneNumber || 'NA'}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-body text-text-secondary">Blood Type</span>
-              <span className="text-body font-medium text-foreground">{user?.bloodGroup || 'O+ Positive'}</span>
+              <span className="text-body font-medium text-foreground">{user?.bloodGroup || 'NA'}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-body text-text-secondary">Allergies</span>
-              <span className="text-body font-medium text-foreground">{user?.allergies || 'Penicillin, Peanuts'}</span>
+              <span className="text-body font-medium text-foreground">{user?.allergies || 'NA'}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-body text-text-secondary">Conditions</span>
-              <span className="text-body font-medium text-foreground">{user?.conditions || 'Type 2 Diabetes'}</span>
+              <span className="text-body font-medium text-foreground">{user?.conditions || 'NA'}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-body text-text-secondary">Emergency Contact</span>
-              <span className="text-body font-medium text-foreground">
-                {user?.emergencyContact?.name || 'Priya'} ({user?.emergencyContact?.relationship || 'Wife'})
-              </span>
+              <div className="text-right">
+                <span className="text-body font-medium text-foreground block">
+                  {user?.emergencyContact?.name || 'NA'} {user?.emergencyContact?.relationship ? `(${user.emergencyContact.relationship})` : ''}
+                </span>
+                {user?.emergencyContact?.phone && (
+                  <span className="text-body font-medium text-foreground block mt-1">
+                    {user.emergencyContact.phone}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -281,11 +270,7 @@ export function ProfileScreen() {
                 item.isDestructive ? "text-destructive" : "text-foreground"
               )}>{item.label}</span>
 
-              {item.badge && (
-                <span className="px-2 py-0.5 rounded-full bg-primary text-caption text-primary-foreground font-medium">
-                  {item.badge}
-                </span>
-              )}
+
 
               {item.isTheme && (
                 <div className="flex items-center gap-2">
@@ -301,7 +286,7 @@ export function ProfileScreen() {
           ))}
         </div>
 
-        {/* Emergency Button */}
+        {/* Emergency Button
         <button className="w-full mt-6 h-13 px-4 py-3 bg-destructive rounded-xl flex items-center justify-center gap-2 active:scale-[0.98] transition-transform">
           <AlertTriangle className="w-5 h-5 text-destructive-foreground" />
           <span className="text-body-lg font-semibold text-destructive-foreground">
@@ -310,9 +295,10 @@ export function ProfileScreen() {
         </button>
         <p className="text-caption text-text-tertiary text-center mt-2">
           This will share your medical ID with emergency contacts
-        </p>
+        </p> */}
 
         {/* Footer */}
+
         <div className="text-center mt-8">
           <p className="text-caption text-text-tertiary">MediGuide v1.0.0</p>
           <p className="text-caption text-secondary mt-1">Made with ❤️ for your health</p>
@@ -320,6 +306,18 @@ export function ProfileScreen() {
       </div>
 
       <TabBar />
+
+      {/* Info Dialog */}
+      <Dialog open={!!activeDialog} onOpenChange={() => setActiveDialog(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{activeDialog && infoContent[activeDialog].title}</DialogTitle>
+          </DialogHeader>
+          <div className="py-2">
+            {activeDialog && infoContent[activeDialog].body}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

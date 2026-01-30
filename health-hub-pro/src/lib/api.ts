@@ -52,8 +52,10 @@ async function apiFetch<T>(
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Request failed' }));
-    throw new Error(error.message || `API request failed: ${response.statusText}`);
+    const errorBody = await response.json().catch(() => ({ message: 'Request failed' }));
+    const error = new Error(errorBody.detail || errorBody.message || `API request failed: ${response.statusText}`);
+    (error as any).status = response.status;
+    throw error;
   }
 
   if (response.status === 204) {
@@ -94,7 +96,7 @@ export async function getReportStatus(reportId: string): Promise<{
   progress?: number;
   error_message?: string;
 }> {
-  return apiRequest(`/reports/${reportId}/status`);
+  return apiFetch(`/reports/${reportId}/status`);
 }
 
 /**
@@ -160,6 +162,7 @@ export async function listReports(params?: {
   page?: number;
   limit?: number;
   user_id?: string;
+  status?: string;
 }): Promise<{
   items: any[];
   total: number;
@@ -172,6 +175,7 @@ export async function listReports(params?: {
   if (params?.search) queryParams.append('search', params.search);
   if (params?.report_type) queryParams.append('report_type', params.report_type);
   if (params?.flag_level) queryParams.append('flag_level', params.flag_level);
+  if (params?.status) queryParams.append('status', params.status);
   if (params?.time_range) queryParams.append('time_range', params.time_range);
   if (params?.page) queryParams.append('page', params.page.toString());
   if (params?.limit) queryParams.append('limit', params.limit.toString());
@@ -265,7 +269,7 @@ export async function getFamilyMembers(): Promise<FamilyMember[]> {
   return apiFetch('/family/members');
 }
 
-export async function inviteFamilyMember(data: { email?: string; phone_number?: string; nickname?: string }): Promise<{ connection_id: string; message: string }> {
+export async function inviteFamilyMember(data: { email?: string; phone_number?: string; nickname?: string; target_user_id?: string }): Promise<{ connection_id: string; message: string }> {
   return apiFetch('/family/invite', {
     method: 'POST',
     body: JSON.stringify(data),

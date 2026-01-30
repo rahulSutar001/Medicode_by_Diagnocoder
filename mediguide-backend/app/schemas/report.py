@@ -38,6 +38,9 @@ class ReportResponse(BaseModel):
     date: Optional[str] = None
     type: str
     lab_name: Optional[str] = None
+    patient_name: Optional[str] = None
+    patient_age: Optional[str] = None
+    patient_gender: Optional[str] = None
     flag_level: Literal['green', 'yellow', 'red']
     uploaded_to_abdm: bool = False
     status: Literal['processing', 'completed', 'failed']
@@ -56,7 +59,7 @@ class TestParameterResponse(BaseModel):
     name: str
     value: str
     unit: Optional[str] = None
-    normal_range: str
+    normal_range: Optional[str] = ""
     range: Optional[str] = None
     flag: Literal['normal', 'high', 'low']
     explanation: Optional['ExplanationResponse'] = None

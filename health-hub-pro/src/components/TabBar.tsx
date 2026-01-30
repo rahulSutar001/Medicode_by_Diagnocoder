@@ -30,7 +30,7 @@ export function TabBar() {
           key={tab.id}
           onClick={() => handleTabChange(tab.id)}
           className={cn(
-            "flex flex-col items-center justify-center w-[75px] py-2 transition-all duration-200",
+            "flex-1 flex flex-col items-center justify-center py-2 transition-all duration-200",
             tab.isCenter && "relative -mt-6"
           )}
         >
@@ -40,17 +40,17 @@ export function TabBar() {
             </div>
           ) : (
             <>
-              <tab.icon 
+              <tab.icon
                 className={cn(
                   "w-6 h-6 transition-colors duration-200",
                   activeTab === tab.id ? "text-primary" : "text-text-tertiary"
                 )}
               />
-              <span 
+              <span
                 className={cn(
                   "text-xs mt-1 transition-colors duration-200",
-                  activeTab === tab.id 
-                    ? "text-primary font-semibold" 
+                  activeTab === tab.id
+                    ? "text-primary font-semibold"
                     : "text-text-tertiary font-normal"
                 )}
               >
