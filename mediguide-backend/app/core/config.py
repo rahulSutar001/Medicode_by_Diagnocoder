@@ -11,9 +11,9 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables"""
     
     # Supabase Configuration
-    SUPABASE_URL: Optional[str] = "https://ncmqkhfzqxwrgckybzis.supabase.co"
-    SUPABASE_ANON_KEY: Optional[str] = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5jbXFraGZ6cXh3cmdja3liemlzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc3MjA5NzEsImV4cCI6MjA4MzI5Njk3MX0.ZgCK6R6AqSZjqzHua83YMfjCMBWrC73NNsvH9OArBE0"
-    SUPABASE_SERVICE_ROLE_KEY: Optional[str] = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5jbXFraGZ6cXh3cmdja3liemlzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NzcyMDk3MSwiZXhwIjoyMDgzMjk2OTcxfQ.Gtb4j1seiTuthp3KyrkehUKnZzNFPrnNEUxzAJCWwmo"
+    SUPABASE_URL: Optional[str] = ""
+    SUPABASE_ANON_KEY: Optional[str] = ""
+    SUPABASE_SERVICE_ROLE_KEY: Optional[str] = ""
     
     @model_validator(mode='after')
     def clean_supabase_config(self):
@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     # OCR Configuration
     OCR_SERVICE: str = "tesseract"  # Options: tesseract, google_vision, aws_textract
     GOOGLE_VISION_API_KEY: Optional[str] = None
-    GOOGLE_API_KEY: Optional[str] = "AIzaSyCojcxbl0TL8qDi-eESNjUyn9FRfwR9dNQ"
+    GOOGLE_API_KEY: Optional[str] = ""
     AWS_ACCESS_KEY_ID: Optional[str] = None
     AWS_SECRET_ACCESS_KEY: Optional[str] = None
     
